@@ -25,11 +25,47 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
             self?.checkForPostUpdateGatekeeperHelp()
+            self?.openSettingsOnLaunchIfNeeded()
         }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
         logger.info("Orbit Dictation terminating")
+    }
+
+    /// When the user clicks the .app (Finder, Dock, Spotlight, ⌘-tab) while
+    /// the app is already running, open Settings. Without this, an LSUIElement
+    /// app appears to do nothing on second-launch — there's no Dock icon to
+    /// raise and the menu-bar popover only opens on click. macOS calls this
+    /// hook with `hasVisibleWindows = false` on a fresh activation; we open
+    /// Settings as the canonical "main" window.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
+        if !hasVisibleWindows {
+            postOpenSettings()
+        }
+        return true
+    }
+
+    /// Open the Settings window on launch if onboarding is already done. The
+    /// onboarding window covers first-install (it presents the setup checklist
+    /// inline), so Settings only auto-opens for repeat launches — that's where
+    /// the user has come back to the app expecting to see something. Skipped
+    /// during onboarding to avoid stacking two windows on first run.
+    private func openSettingsOnLaunchIfNeeded() {
+        guard let appState, appState.onboardingCompleted else { return }
+        guard onboardingWindowController == nil else { return }
+        postOpenSettings()
+    }
+
+    private func postOpenSettings() {
+        // The menu-bar icon view observes this notification and routes the
+        // tap to `WindowUtilities.focusOrOpenWindow(id: .settings)`. Reusing
+        // it here keeps a single code path for "open the Settings window".
+        NotificationCenter.default.post(
+            name: .whispurOpenSettings,
+            object: SettingsTab.setup.rawValue
+        )
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     func connect(appState: AppState) {
