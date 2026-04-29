@@ -10,7 +10,7 @@ final class OnboardingWindowController: NSWindowController, NSWindowDelegate {
 
         let hostingController = NSHostingController(rootView: AnyView(EmptyView()))
         let window = NSWindow(contentViewController: hostingController)
-        window.title = "Welcome to Whispur"
+        window.title = "Welcome to Orbit Dictation"
         window.styleMask = [.titled, .closable, .miniaturizable, .fullSizeContentView]
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
@@ -74,7 +74,7 @@ private enum OnboardingStep: Int, CaseIterable, Identifiable {
         case .welcome:
             return "A fast first-run pass before dictation disappears into the background."
         case .microphone:
-            return "Whispur needs live audio input before it can capture speech."
+            return "Orbit Dictation needs live audio input before it can capture speech."
         case .accessibility:
             return "Global shortcuts and paste-back depend on accessibility access."
         case .shortcuts:
@@ -130,7 +130,7 @@ struct OnboardingWindow: View {
     private var header: some View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 6) {
-                Text("Welcome to Whispur")
+                Text("Welcome to Orbit Dictation")
                     .font(.title2.weight(.semibold))
                 Text(step.subtitle)
                     .font(.subheadline)
@@ -188,7 +188,7 @@ struct OnboardingWindow: View {
 
     private var welcomeStep: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Whispur keeps capture, cleanup, and paste in one pass. This short setup makes sure the menu bar app is ready before your first dictation.")
+            Text("Orbit Dictation keeps capture, cleanup, and paste in one pass. This short setup makes sure the menu bar app is ready before your first dictation.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
 
@@ -210,14 +210,14 @@ struct OnboardingWindow: View {
             SetupChecklistRow(
                 title: "Grant microphone access",
                 detail: appState.microphoneAccessGranted
-                    ? "Whispur can capture speech from your active input device."
-                    : "Allow microphone access so Whispur can record your voice.",
+                    ? "Orbit Dictation can capture speech from your active input device."
+                    : "Allow microphone access so Orbit Dictation can record your voice.",
                 isComplete: appState.microphoneAccessGranted,
                 actionTitle: appState.microphoneAccessGranted ? "Open Settings" : "Allow",
                 action: appState.microphoneAccessGranted ? appState.openMicrophoneSettings : appState.requestMicrophoneAccess
             )
 
-            Text("If the system prompt was dismissed earlier, use Open Settings and enable Whispur manually in Privacy & Security > Microphone.")
+            Text("If the system prompt was dismissed earlier, use Open Settings and enable Orbit Dictation manually in Privacy & Security > Microphone.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -229,7 +229,7 @@ struct OnboardingWindow: View {
                 title: "Enable accessibility access",
                 detail: appState.hotkeyManager.isAccessibilityGranted
                     ? "Global shortcuts and paste-back are available."
-                    : "Whispur needs accessibility access for global shortcuts and text insertion.",
+                    : "Orbit Dictation needs accessibility access for global shortcuts and text insertion.",
                 isComplete: appState.hotkeyManager.isAccessibilityGranted,
                 actionTitle: appState.hotkeyManager.isAccessibilityGranted ? "Open Settings" : "Grant Access",
                 action: appState.hotkeyManager.isAccessibilityGranted ? appState.openAccessibilitySettings : appState.requestAccessibilityAccess
@@ -274,7 +274,7 @@ struct OnboardingWindow: View {
                 title: "Permissions",
                 detail: appState.hasRequiredPermissions
                     ? "Microphone and accessibility access are both in place."
-                    : "You can finish setup later, but Whispur won’t be seamless until both permissions are granted.",
+                    : "You can finish setup later, but Orbit Dictation won’t be seamless until both permissions are granted.",
                 isComplete: appState.hasRequiredPermissions,
                 actionTitle: appState.hasRequiredPermissions ? nil : "Open Setup Guide",
                 action: appState.hasRequiredPermissions ? nil : { openSettings(tab: .setup) }
@@ -342,7 +342,7 @@ struct OnboardingWindow: View {
                 }
                 .buttonStyle(.bordered)
 
-                Button("Start Using Whispur") {
+                Button("Start Using Orbit Dictation") {
                     appState.markOnboardingCompleted()
                     dismiss()
                 }

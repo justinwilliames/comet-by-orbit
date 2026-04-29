@@ -285,7 +285,7 @@ final class AppState: ObservableObject {
         }
 
         guard hotkeyManager.isAccessibilityGranted else {
-            pipeline.presentError("Accessibility access is required before Whispur can paste dictated text.")
+            pipeline.presentError("Accessibility access is required before Orbit Dictation can paste dictated text.")
             return
         }
 

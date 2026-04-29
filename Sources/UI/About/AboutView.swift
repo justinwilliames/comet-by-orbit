@@ -2,7 +2,8 @@ import AppKit
 import SwiftUI
 
 struct AboutView: View {
-    private let repositoryURL = URL(string: "https://github.com/sophiie-ai/whispur")!
+    private let repositoryURL = URL(string: "https://github.com/justinwilliames-sketch/orbit-dictation")!
+    private let upstreamURL = URL(string: "https://github.com/sophiie-ai/whispur")!
 
     var body: some View {
         VStack(spacing: 18) {
@@ -14,7 +15,7 @@ struct AboutView: View {
                 .shadow(color: .black.opacity(0.12), radius: 10, y: 6)
 
             VStack(spacing: 6) {
-                Text("Whispur")
+                Text("Orbit Dictation")
                     .font(.title2.weight(.semibold))
 
                 Text("Menu-bar voice dictation for macOS")
@@ -27,7 +28,7 @@ struct AboutView: View {
             }
 
             VStack(spacing: 10) {
-                Text("Whispur captures speech, transcribes it, optionally cleans it up, and pastes the result back into your current app.")
+                Text("Orbit Dictation captures speech, transcribes it, optionally cleans it up, and pastes the result back into your current app.")
                     .font(.callout)
                     .multilineTextAlignment(.center)
                     .foregroundStyle(.secondary)
@@ -37,6 +38,14 @@ struct AboutView: View {
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
+
+                HStack(spacing: 4) {
+                    Text("Powered by")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Link("Whispur", destination: upstreamURL)
+                        .font(.caption)
+                }
             }
 
             Divider()

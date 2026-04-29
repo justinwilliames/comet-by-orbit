@@ -2,10 +2,10 @@ import Cocoa
 import Foundation
 import os
 
-private let logger = Logger(subsystem: "ai.sophiie.whispur", category: "AppDelegate")
+private let logger = Logger(subsystem: "team.yourorbit.OrbitDictation", category: "AppDelegate")
 
 extension Notification.Name {
-    static let whispurOpenSettings = Notification.Name("ai.sophiie.whispur.open-settings")
+    static let whispurOpenSettings = Notification.Name("team.yourorbit.OrbitDictation.open-settings")
 }
 
 /// Handles application lifecycle events.
@@ -17,12 +17,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         didFinishLaunching = true
-        logger.info("Whispur launched")
+        logger.info("Orbit Dictation launched")
         presentOnboardingIfNeeded()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        logger.info("Whispur terminating")
+        logger.info("Orbit Dictation terminating")
     }
 
     func connect(appState: AppState) {

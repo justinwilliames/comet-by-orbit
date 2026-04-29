@@ -1,248 +1,291 @@
-name: Build, Sign, Notarize & Publish
+name: Build Orbit Dictation
+
+# Builds an unsigned Orbit Dictation.app, wraps it in a .dmg, and (when
+# triggered by a v*.*.* tag) attaches the .dmg + appcast.xml to a GitHub
+# Release. Modelled on the orion-by-orbit build workflow.
+#
+# No Apple Developer ID required for now. Output is unsigned — users see a
+# Gatekeeper prompt on first launch and bypass it once with
+# `xattr -dr com.apple.quarantine /Applications/Orbit\ Dictation.app`
+# (documented in the README and in each release's body).
 
 on:
-  workflow_call:
-    inputs:
-      version:
-        required: true
-        type: string
-      tag_name:
-        required: true
-        type: string
+  push:
+    branches: [main]
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch: {}
 
 permissions:
   contents: write
-  pull-requests: write
 
 jobs:
-  build:
-    runs-on: macos-15
-    timeout-minutes: 45
+  decide:
+    name: Skip duplicate run?
+    runs-on: ubuntu-latest
+    outputs:
+      should_run: ${{ steps.gate.outputs.should_run }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
-      - name: Install tools
-        run: brew install xcodegen create-dmg
-
-      - name: Import Code Signing Certificate
-        env:
-          CERTIFICATE_P12: ${{ secrets.DEVELOPER_ID_CERTIFICATE_P12 }}
-          CERTIFICATE_PASSWORD: ${{ secrets.DEVELOPER_ID_CERTIFICATE_PASSWORD }}
+      - id: gate
         run: |
-          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
-          KEYCHAIN_PASSWORD=$(uuidgen)
+          if [[ "$GITHUB_REF" == "refs/heads/main" ]]; then
+            if git tag --points-at HEAD | grep -qE '^v[0-9]'; then
+              echo "should_run=false" >> "$GITHUB_OUTPUT"
+              echo "::notice::Skipping main run — commit has v* tag"
+              exit 0
+            fi
+          fi
+          echo "should_run=true" >> "$GITHUB_OUTPUT"
 
-          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
-          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+  build:
+    needs: decide
+    if: needs.decide.outputs.should_run == 'true'
+    name: Build & package .dmg
+    runs-on: macos-latest
+    timeout-minutes: 25
 
-          echo "$CERTIFICATE_P12" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
-          security import "$RUNNER_TEMP/certificate.p12" \
-            -P "$CERTIFICATE_PASSWORD" \
-            -A -t cert -f pkcs12 \
-            -k "$KEYCHAIN_PATH"
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
 
-          security set-key-partition-list -S apple-tool:,apple:,codesign: \
-            -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-
-          security list-keychains -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | tr -d '"')
-
-      - name: Compute build number
-        id: buildnum
-        run: |
-          VERSION="${{ inputs.version }}"
-          IFS='.' read -r major minor patch <<< "$VERSION"
-          BUILD=$((10#$major * 10000 + 10#$minor * 100 + 10#$patch))
-          echo "build_number=$BUILD" >> "$GITHUB_OUTPUT"
-          echo "Build number: $BUILD"
+      - name: Install XcodeGen
+        run: brew install xcodegen
 
       - name: Generate Xcode project
         run: xcodegen generate
 
-      - name: Archive
-        env:
-          BUILD_NUMBER: ${{ steps.buildnum.outputs.build_number }}
+      - name: Resolve build version from tag (or main)
+        id: version
         run: |
-          xcodebuild \
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            MARKETING_VERSION="${GITHUB_REF_NAME#v}"
+          else
+            MARKETING_VERSION="0.0.${{ github.run_number }}"
+          fi
+          BUILD_NUMBER="${{ github.run_number }}"
+          echo "marketing_version=$MARKETING_VERSION" >> "$GITHUB_OUTPUT"
+          echo "build_number=$BUILD_NUMBER" >> "$GITHUB_OUTPUT"
+          echo "Building Orbit Dictation $MARKETING_VERSION (build $BUILD_NUMBER)"
+
+      - name: Build (unsigned, Release)
+        run: |
+          xcodebuild build \
             -project Whispur.xcodeproj \
             -scheme Whispur \
             -configuration Release \
-            -archivePath build/Whispur.xcarchive \
-            archive \
-            CODE_SIGN_STYLE=Manual \
-            DEVELOPMENT_TEAM=U2KP726DRL \
-            CODE_SIGN_IDENTITY="Developer ID Application: Sophiie AI Pty Ltd (U2KP726DRL)" \
-            CODE_SIGN_ENTITLEMENTS=Whispur.entitlements \
-            ENABLE_HARDENED_RUNTIME=YES \
-            CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
-            MARKETING_VERSION="${{ inputs.version }}" \
-            OTHER_CODE_SIGN_FLAGS="--timestamp"
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGN_REQUIRED=NO \
+            CODE_SIGN_ENTITLEMENTS="" \
+            MARKETING_VERSION="${{ steps.version.outputs.marketing_version }}" \
+            CURRENT_PROJECT_VERSION="${{ steps.version.outputs.build_number }}" \
+            ONLY_ACTIVE_ARCH=NO
 
-      - name: Re-sign app bundle
+      - name: Locate built .app
+        id: locate
         run: |
-          IDENTITY="Developer ID Application: Sophiie AI Pty Ltd (U2KP726DRL)"
-          APP="build/Whispur.xcarchive/Products/Applications/Whispur.app"
-          FRAMEWORK="build/Whispur.xcarchive/Products/Applications/Whispur.app/Contents/Frameworks/Sparkle.framework"
+          set -e
+          APP_PATH=$(find build -name "Orbit Dictation.app" -type d | head -n 1)
+          if [ -z "$APP_PATH" ]; then
+            echo "::error::Could not find Orbit Dictation.app under build/"
+            find build -name "*.app" -type d
+            exit 1
+          fi
+          echo "app_path=$APP_PATH" >> "$GITHUB_OUTPUT"
+          echo "Found .app at: $APP_PATH"
 
-          sparkle_version_dir() {
-            local current="$1/Versions/Current"
-            if [ -L "$current" ]; then
-              echo "$1/Versions/$(readlink "$current")"
-              return
-            fi
-            find "$1/Versions" -maxdepth 1 -mindepth 1 -type d | head -1
-          }
+      - name: Build .dmg via hdiutil
+        id: dmg
+        run: |
+          set -e
+          APP_PATH="${{ steps.locate.outputs.app_path }}"
+          VERSION="${GITHUB_REF_NAME:-dev-$(date +%Y%m%d-%H%M%S)}"
+          DMG_NAME="OrbitDictation-${VERSION}.dmg"
 
-          if [ -d "$FRAMEWORK" ]; then
-            VERSION_DIR=$(sparkle_version_dir "$FRAMEWORK")
+          mkdir -p dist dmg-staging
+          cp -R "$APP_PATH" dmg-staging/
+          ln -s /Applications dmg-staging/Applications
 
-            for BIN in Downloader Installer; do
-              PATH_TO_SIGN="$VERSION_DIR/XPCServices/$BIN.xpc/Contents/MacOS/$BIN"
-              [ -f "$PATH_TO_SIGN" ] && codesign --force --sign "$IDENTITY" --timestamp --options runtime "$PATH_TO_SIGN"
-            done
+          hdiutil create \
+            -volname "Orbit Dictation" \
+            -srcfolder dmg-staging \
+            -ov \
+            -format UDZO \
+            "dist/${DMG_NAME}"
 
-            [ -f "$VERSION_DIR/Updater.app/Contents/MacOS/Updater" ] && \
-              codesign --force --sign "$IDENTITY" --timestamp --options runtime "$VERSION_DIR/Updater.app/Contents/MacOS/Updater"
-            [ -f "$VERSION_DIR/Autoupdate" ] && \
-              codesign --force --sign "$IDENTITY" --timestamp --options runtime "$VERSION_DIR/Autoupdate"
+          echo "dmg_path=dist/${DMG_NAME}" >> "$GITHUB_OUTPUT"
+          echo "dmg_name=${DMG_NAME}" >> "$GITHUB_OUTPUT"
+          ls -la dist/
 
-            for XPC in Downloader.xpc Installer.xpc; do
-              [ -d "$VERSION_DIR/XPCServices/$XPC" ] && \
-                codesign --force --sign "$IDENTITY" --timestamp --options runtime "$VERSION_DIR/XPCServices/$XPC"
-            done
+      - name: Upload .dmg as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.dmg.outputs.dmg_name }}
+          path: ${{ steps.dmg.outputs.dmg_path }}
+          retention-days: 30
 
-            [ -d "$VERSION_DIR/Updater.app" ] && \
-              codesign --force --sign "$IDENTITY" --timestamp --options runtime "$VERSION_DIR/Updater.app"
-            codesign --force --sign "$IDENTITY" --timestamp --options runtime "$FRAMEWORK"
+      - name: Install Sparkle CLI tools (sign_update)
+        if: env.SPARKLE_ED_PRIVATE_KEY != ''
+        env:
+          SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
+        run: |
+          set -e
+          SPARKLE_VERSION="2.6.4"
+          curl -fsSL "https://github.com/sparkle-project/Sparkle/releases/download/${SPARKLE_VERSION}/Sparkle-${SPARKLE_VERSION}.tar.xz" -o /tmp/sparkle.tar.xz
+          mkdir -p /tmp/sparkle && tar -xJf /tmp/sparkle.tar.xz -C /tmp/sparkle
+          SIGN_UPDATE=$(find /tmp/sparkle -name "sign_update" -type f | head -n 1)
+          if [ -z "$SIGN_UPDATE" ]; then
+            echo "::error::sign_update not found in Sparkle bundle"
+            exit 1
+          fi
+          chmod +x "$SIGN_UPDATE"
+          echo "SIGN_UPDATE=$SIGN_UPDATE" >> "$GITHUB_ENV"
+
+      - name: Sign .dmg + generate appcast.xml
+        id: appcast
+        if: env.SPARKLE_ED_PRIVATE_KEY != ''
+        env:
+          SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
+        run: |
+          set -e
+          DMG_PATH="${{ steps.dmg.outputs.dmg_path }}"
+          DMG_NAME="${{ steps.dmg.outputs.dmg_name }}"
+
+          BUILD_NUMBER="${{ github.run_number }}"
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            SHORT_VERSION="${GITHUB_REF_NAME#v}"
+          else
+            SHORT_VERSION="dev-${BUILD_NUMBER}"
+          fi
+          VERSION="$BUILD_NUMBER"
+          DOWNLOAD_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/${DMG_NAME}"
+
+          KEY_FILE=$(mktemp)
+          printf '%s' "$SPARKLE_ED_PRIVATE_KEY" > "$KEY_FILE"
+
+          SIG_OUTPUT=$("$SIGN_UPDATE" -f "$KEY_FILE" "$DMG_PATH")
+          rm -f "$KEY_FILE"
+          ED_SIGNATURE=$(echo "$SIG_OUTPUT" | grep -oE 'sparkle:edSignature="[^"]*"' | sed 's/.*="\(.*\)"/\1/')
+          DMG_LENGTH=$(echo "$SIG_OUTPUT" | grep -oE 'length="[^"]*"' | sed 's/.*="\(.*\)"/\1/')
+          if [ -z "$ED_SIGNATURE" ] || [ -z "$DMG_LENGTH" ]; then
+            echo "::error::Could not parse sign_update output"
+            exit 1
           fi
 
-          codesign --force --sign "$IDENTITY" \
-            --timestamp \
-            --options runtime \
-            --entitlements Whispur.entitlements \
-            "$APP"
-          codesign --verify --deep --strict "$APP"
+          PUB_DATE=$(LC_TIME=C date -u +"%a, %d %b %Y %H:%M:%S +0000")
 
-      - name: Create DMG
-        run: |
-          APP="build/Whispur.xcarchive/Products/Applications/Whispur.app"
-          VOLUME_ICON="Resources/VolumeIcon.icns"
-          [ -f "$VOLUME_ICON" ] || { echo "ERROR: Volume icon not found at $VOLUME_ICON"; exit 1; }
-          create-dmg \
-            --volname "Install Whispur" \
-            --volicon "$VOLUME_ICON" \
-            --window-pos 200 120 \
-            --window-size 540 380 \
-            --icon-size 128 \
-            --icon "Whispur.app" 150 190 \
-            --hide-extension "Whispur.app" \
-            --app-drop-link 390 190 \
-            --text-size 13 \
-            --no-internet-enable \
-            build/Whispur.dmg \
-            "$APP" || true
-
-          [ -f build/Whispur.dmg ] || { echo "ERROR: DMG not created"; exit 1; }
-          codesign --force --sign "Developer ID Application: Sophiie AI Pty Ltd (U2KP726DRL)" --timestamp build/Whispur.dmg
-
-      - name: Notarize DMG
-        env:
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
-        run: |
-          xcrun notarytool submit build/Whispur.dmg \
-            --apple-id "$APPLE_ID" \
-            --password "$APPLE_ID_PASSWORD" \
-            --team-id U2KP726DRL \
-            --wait
-          xcrun stapler staple build/Whispur.dmg
-
-      - name: Sign DMG for Sparkle
-        id: sparkle
-        env:
-          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
-        run: |
-          SIGN_UPDATE=$(find ~/Library/Developer/Xcode/DerivedData \
-            -name sign_update -path "*/Sparkle/bin/*" 2>/dev/null | head -1)
-
-          [ -n "$SIGN_UPDATE" ] || { echo "ERROR: sign_update not found"; exit 1; }
-
-          SPARKLE_OUTPUT=$("$SIGN_UPDATE" build/Whispur.dmg -f <(echo "$SPARKLE_PRIVATE_KEY"))
-          echo "$SPARKLE_OUTPUT"
-
-          SIGNATURE=$(echo "$SPARKLE_OUTPUT" | sed -n 's/.*sparkle:edSignature="\([^"]*\)".*/\1/p')
-          DMG_LENGTH=$(stat -f%z build/Whispur.dmg)
-
-          echo "signature=$SIGNATURE" >> "$GITHUB_OUTPUT"
-          echo "dmg_length=$DMG_LENGTH" >> "$GITHUB_OUTPUT"
-
-      - name: Upload DMG to GitHub Release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh release upload "${{ inputs.tag_name }}" build/Whispur.dmg \
-            --repo ${{ github.repository }} \
-            --clobber
-
-      - name: Update appcast.xml
-        env:
-          BUILD_NUMBER: ${{ steps.buildnum.outputs.build_number }}
-          SIGNATURE: ${{ steps.sparkle.outputs.signature }}
-          DMG_LENGTH: ${{ steps.sparkle.outputs.dmg_length }}
-        run: |
-          VERSION="${{ inputs.version }}"
-          TAG="${{ inputs.tag_name }}"
-          REPO="${{ github.repository }}"
-          PUB_DATE=$(date -R)
-
-          python3 <<PYEOF
-          import re
-
-          with open("public/appcast.xml", "r", encoding="utf-8") as handle:
-              appcast = handle.read()
-
-          new_item = """    <item>
-                <title>Version $VERSION</title>
-                <sparkle:version>$BUILD_NUMBER</sparkle:version>
-                <sparkle:shortVersionString>$VERSION</sparkle:shortVersionString>
+          mkdir -p dist
+          cat > dist/appcast.xml <<APPCAST
+          <?xml version="1.0" encoding="utf-8"?>
+          <rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+            <channel>
+              <title>Orbit Dictation</title>
+              <link>https://github.com/${GITHUB_REPOSITORY}/releases/latest</link>
+              <description>Orbit Dictation — menu-bar voice dictation for macOS.</description>
+              <language>en</language>
+              <item>
+                <title>Orbit Dictation ${SHORT_VERSION}</title>
+                <link>https://github.com/${GITHUB_REPOSITORY}/releases/tag/${GITHUB_REF_NAME}</link>
+                <sparkle:version>${VERSION}</sparkle:version>
+                <sparkle:shortVersionString>${SHORT_VERSION}</sparkle:shortVersionString>
                 <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-                <pubDate>$PUB_DATE</pubDate>
+                <pubDate>${PUB_DATE}</pubDate>
                 <enclosure
-                  url="https://github.com/$REPO/releases/download/$TAG/Whispur.dmg"
-                  length="$DMG_LENGTH"
+                  url="${DOWNLOAD_URL}"
+                  length="${DMG_LENGTH}"
                   type="application/octet-stream"
-                  sparkle:edSignature="$SIGNATURE" />
-              </item>"""
+                  sparkle:edSignature="${ED_SIGNATURE}" />
+              </item>
+            </channel>
+          </rss>
+          APPCAST
 
-          appcast = re.sub(
-              r"(<language>en</language>\\n).*?(  </channel>)",
-              r"\\1" + new_item + r"\\n\\2",
-              appcast,
-              flags=re.DOTALL,
-          )
+          echo "appcast_path=dist/appcast.xml" >> "$GITHUB_OUTPUT"
 
-          with open("public/appcast.xml", "w", encoding="utf-8") as handle:
-              handle.write(appcast)
-          PYEOF
+      - name: Update rolling 'latest' release
+        if: github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: "Orbit Dictation — latest dev build"
+          files: |
+            ${{ steps.dmg.outputs.dmg_path }}
+            ${{ steps.appcast.outputs.appcast_path }}
+          prerelease: true
+          make_latest: "false"
+          body: |
+            **Orbit Dictation — menu-bar voice dictation for macOS, part of [Orbit](https://get.yourorbit.team).** Rolling latest dev build, refreshed on every push to `main`. For tagged stable releases see the [Releases list](https://github.com/justinwilliames-sketch/orbit-dictation/releases).
 
-      - name: Commit appcast update
+            Built from commit [`${{ github.sha }}`](https://github.com/justinwilliames-sketch/orbit-dictation/commit/${{ github.sha }}).
+
+            > [!IMPORTANT]
+            > **You MUST run a Terminal command before this app will open.**
+            > Orbit Dictation is unsigned (no Apple Developer ID yet), so macOS Gatekeeper will refuse to launch it.
+
+            ## Install
+
+            ### 1. Download the .dmg below
+            ### 2. Drag Orbit Dictation into Applications
+            ### 3. ⚠️ REQUIRED — run this in Terminal
+
+            ```bash
+            xattr -dr com.apple.quarantine "/Applications/Orbit Dictation.app"
+            ```
+
+            One-time per install. Right-click → **Open** also works.
+
+            ### 4. Launch from Applications
+
+            Orbit Dictation appears in your menu bar. Grant Microphone + Accessibility permissions when prompted.
         env:
-          DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
-        run: |
-          mkdir -p ~/.ssh
-          echo "$DEPLOY_KEY" > ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null
-          git remote set-url origin git@github.com:${{ github.repository }}.git
-          GIT_SSH_COMMAND="ssh -i ~/.ssh/deploy_key" git config core.sshCommand "ssh -i ~/.ssh/deploy_key"
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add public/appcast.xml
-          git commit -m "chore: update appcast for ${{ inputs.tag_name }}" || exit 0
-          git push origin HEAD:main
+      - name: Create tagged GitHub Release with .dmg + appcast
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ${{ steps.dmg.outputs.dmg_path }}
+            ${{ steps.appcast.outputs.appcast_path }}
+          name: Orbit Dictation ${{ github.ref_name }}
+          generate_release_notes: true
+          prerelease: false
+          make_latest: "true"
+          body: |
+            **Orbit Dictation — menu-bar voice dictation for macOS, part of [Orbit](https://get.yourorbit.team).**
 
-          rm -f ~/.ssh/deploy_key
+            > [!IMPORTANT]
+            > **You MUST run a Terminal command before this app will open.**
+            > Orbit Dictation is unsigned (no Apple Developer ID yet), so macOS Gatekeeper will refuse to launch it.
+
+            ## Install — three steps, do all of them
+
+            ### 1. Download the .dmg
+
+            Click `${{ steps.dmg.outputs.dmg_name }}` below.
+
+            ### 2. Drag Orbit Dictation into Applications
+
+            Open the `.dmg`, drag the **Orbit Dictation** icon into the **Applications** shortcut.
+
+            ### 3. ⚠️ REQUIRED — run this in Terminal
+
+            ```bash
+            xattr -dr com.apple.quarantine "/Applications/Orbit Dictation.app"
+            ```
+
+            One-time per install. Right-click → **Open** also works, as does System Settings → Privacy & Security → "Open Anyway".
+
+            ### 4. Launch from Applications
+
+            Orbit Dictation runs in your menu bar (no Dock icon). Grant Microphone + Accessibility permissions when first prompted.
+
+            ## What this is
+
+            An Orbit-branded fork of [Whispur](https://github.com/sophiie-ai/whispur) (MIT). Hold a shortcut, speak, paste cleaned text into the app you're already using. Local-first by default, with optional cloud STT/LLM providers.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

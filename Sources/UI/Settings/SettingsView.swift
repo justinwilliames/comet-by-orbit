@@ -17,7 +17,7 @@ struct SettingsView: View {
     private var sidebar: some View {
         VStack(alignment: .leading, spacing: 10) {
             VStack(alignment: .leading, spacing: 4) {
-                Text("Whispur")
+                Text("Orbit Dictation")
                     .font(.title3.weight(.semibold))
                 Text(selectedTab.subtitle)
                     .font(.caption)

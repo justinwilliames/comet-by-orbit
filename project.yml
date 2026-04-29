@@ -1,6 +1,6 @@
 name: Whispur
 options:
-  bundleIdPrefix: ai.sophiie
+  bundleIdPrefix: team.yourorbit
   deploymentTarget:
     macOS: "14.0"
   xcodeVersion: "16.0"
@@ -29,11 +29,11 @@ targets:
       - package: Sparkle
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: ai.sophiie.whispur
-        PRODUCT_NAME: Whispur
-        MARKETING_VERSION: "0.13.4" # x-release-please-version
-        CURRENT_PROJECT_VERSION: "100"
-        CODE_SIGN_ENTITLEMENTS: Whispur.entitlements
+        PRODUCT_BUNDLE_IDENTIFIER: team.yourorbit.OrbitDictation
+        PRODUCT_NAME: "Orbit Dictation"
+        MARKETING_VERSION: "0.1.0" # x-release-please-version
+        CURRENT_PROJECT_VERSION: "1"
+        CODE_SIGN_ENTITLEMENTS: OrbitDictation.entitlements
         ENABLE_HARDENED_RUNTIME: true
         LD_RUNPATH_SEARCH_PATHS: "@executable_path/../Frameworks"
         COMBINE_HIDPI_IMAGES: true
@@ -41,21 +41,21 @@ targets:
       path: Info.plist
       properties:
         CFBundleDevelopmentRegion: en
-        CFBundleDisplayName: Whispur
-        CFBundleName: Whispur
+        CFBundleDisplayName: Orbit Dictation
+        CFBundleName: Orbit Dictation
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         LSUIElement: true
         LSApplicationCategoryType: public.app-category.productivity
         LSMinimumSystemVersion: "$(MACOSX_DEPLOYMENT_TARGET)"
-        NSMicrophoneUsageDescription: "Whispur uses your microphone only when you start dictation, so it can capture speech and turn it into text."
-        NSSpeechRecognitionUsageDescription: "Whispur uses Apple's speech recognition when you choose the on-device Apple provider for local dictation."
-        NSAccessibilityUsageDescription: "Whispur uses Accessibility access to detect the focused text field and paste your transcript back where you're typing."
-        NSHumanReadableCopyright: "© 2026 Sophiie AI Pty Ltd. All rights reserved."
+        NSMicrophoneUsageDescription: "Orbit Dictation uses your microphone only when you start dictation, so it can capture speech and turn it into text."
+        NSSpeechRecognitionUsageDescription: "Orbit Dictation uses Apple's speech recognition when you choose the on-device Apple provider for local dictation."
+        NSAccessibilityUsageDescription: "Orbit Dictation uses Accessibility access to detect the focused text field and paste your transcript back where you're typing."
+        NSHumanReadableCopyright: "© 2026 Justin Williames. Built on Whispur (MIT)."
         NSPrincipalClass: NSApplication
         NSSupportsAutomaticTermination: true
-        SUFeedURL: https://whispur.app/appcast.xml
-        SUPublicEDKey: c4knNUUEnIKOq4/QeFU9yts+swIKnXQetWKjZnkZ2eg=
+        SUFeedURL: https://github.com/justinwilliames-sketch/orbit-dictation/releases/latest/download/appcast.xml
+        SUPublicEDKey: 4HZt8Wm9W7FCkufc4a8CneXFmCd9v3UM3dIa6ob2xXE=
 
   WhispurTests:
     type: bundle.unit-test
@@ -66,5 +66,5 @@ targets:
       - target: Whispur
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: ai.sophiie.whispur.tests
+        PRODUCT_BUNDLE_IDENTIFIER: team.yourorbit.OrbitDictation.tests
         GENERATE_INFOPLIST_FILE: YES

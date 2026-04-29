@@ -18,7 +18,7 @@ struct ProvidersSettingsView: View {
     private var languagesCard: some View {
         PreferenceCard(
             "Preferred Language",
-            detail: "Pick the language you speak. Whispur sends this as a hint to the selected STT provider. Auto-detect asks the provider to identify the language itself — best when you switch between languages.",
+            detail: "Pick the language you speak. Orbit Dictation sends this as a hint to the selected STT provider. Auto-detect asks the provider to identify the language itself — best when you switch between languages.",
             icon: "character.bubble"
         ) {
             STTLanguagePicker(appState: appState)
@@ -28,7 +28,7 @@ struct ProvidersSettingsView: View {
     private var speechCard: some View {
         PreferenceCard(
             "Speech-to-Text",
-            detail: "Pick the transcription service Whispur should call after recording.",
+            detail: "Pick the transcription service Orbit Dictation should call after recording.",
             icon: "waveform.badge.mic"
         ) {
             VStack(alignment: .leading, spacing: 14) {
@@ -83,7 +83,7 @@ struct ProvidersSettingsView: View {
                     ProviderConfigurationCard(
                         name: provider.displayName,
                         note: appState.selectedLLM == provider && !appState.isSelectedLLMConfigured
-                            ? "Whispur will paste raw transcripts until credentials are added."
+                            ? "Orbit Dictation will paste raw transcripts until credentials are added."
                             : "Use this provider for transcript cleanup after transcription.",
                         isActive: appState.selectedLLM == provider,
                         isConfigured: appState.keychain.hasKeysFor(llm: provider)
@@ -149,11 +149,11 @@ private struct STTLanguagePicker: View {
         case (.deepgram, .auto):
             return "Deepgram will use nova-3's multilingual mode (English, Spanish, French, German, Hindi, Russian, Portuguese, Japanese, Italian, Dutch)."
         case (.apple, .auto):
-            return "Apple has no auto mode — Whispur falls back to your system language."
+            return "Apple has no auto mode — Orbit Dictation falls back to your system language."
         case (.openai, .auto), (.groqWhisper, .auto), (.elevenlabs, .auto):
             return "The provider will detect the language on each recording."
         default:
-            return "Whispur will tell \(provider.displayName) which language to expect."
+            return "Orbit Dictation will tell \(provider.displayName) which language to expect."
         }
     }
 }

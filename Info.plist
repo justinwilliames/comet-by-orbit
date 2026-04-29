@@ -7,13 +7,13 @@
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Whispur</string>
+	<string>Orbit Dictation</string>
 	<key>CFBundleIdentifier</key>
 	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>Whispur</string>
+	<string>Orbit Dictation</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -27,20 +27,20 @@
 	<key>LSUIElement</key>
 	<true/>
 	<key>NSAccessibilityUsageDescription</key>
-	<string>Whispur uses Accessibility access to detect the focused text field and paste your transcript back where you're typing.</string>
+	<string>Orbit Dictation uses Accessibility access to detect the focused text field and paste your transcript back where you're typing.</string>
 	<key>NSHumanReadableCopyright</key>
-	<string>© 2026 Sophiie AI Pty Ltd. All rights reserved.</string>
+	<string>© 2026 Justin Williames. Built on Whispur (MIT).</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Whispur uses your microphone only when you start dictation, so it can capture speech and turn it into text.</string>
+	<string>Orbit Dictation uses your microphone only when you start dictation, so it can capture speech and turn it into text.</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 	<key>NSSupportsAutomaticTermination</key>
 	<true/>
 	<key>NSSpeechRecognitionUsageDescription</key>
-	<string>Whispur uses Apple's speech recognition when you choose the on-device Apple provider for local dictation.</string>
+	<string>Orbit Dictation uses Apple's speech recognition when you choose the on-device Apple provider for local dictation.</string>
 	<key>SUFeedURL</key>
-	<string>https://whispur.app/appcast.xml</string>
+	<string>https://github.com/justinwilliames-sketch/orbit-dictation/releases/latest/download/appcast.xml</string>
 	<key>SUPublicEDKey</key>
-	<string>c4knNUUEnIKOq4/QeFU9yts+swIKnXQetWKjZnkZ2eg=</string>
+	<string>4HZt8Wm9W7FCkufc4a8CneXFmCd9v3UM3dIa6ob2xXE=</string>
 </dict>
 </plist>

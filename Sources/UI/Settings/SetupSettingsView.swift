@@ -17,7 +17,7 @@ struct SetupSettingsView: View {
 
     private var heroCard: some View {
         PreferenceCard(
-            "Whispur Setup",
+            "Orbit Dictation Setup",
             detail: "Finish the core steps once, then dictation stays out of your way.",
             icon: "sparkles"
         ) {
@@ -26,7 +26,7 @@ struct SetupSettingsView: View {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("\(appState.setupCompletedCount) of \(appState.setupItemCount) complete")
                             .font(.title2.weight(.semibold))
-                        Text(appState.isReadyForDailyUse ? "Whispur is ready to dictate across your Mac." : "A few items still need attention before daily use feels seamless.")
+                        Text(appState.isReadyForDailyUse ? "Orbit Dictation is ready to dictate across your Mac." : "A few items still need attention before daily use feels seamless.")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                     }
@@ -59,7 +59,7 @@ struct SetupSettingsView: View {
             VStack(spacing: 10) {
                 SetupChecklistRow(
                     title: "Grant microphone access",
-                    detail: "Whispur needs live audio input before it can capture speech.",
+                    detail: "Orbit Dictation needs live audio input before it can capture speech.",
                     isComplete: appState.microphoneAccessGranted,
                     actionTitle: appState.microphoneAccessGranted ? nil : "Allow",
                     action: appState.microphoneAccessGranted ? nil : { appState.requestMicrophoneAccess() }
@@ -67,7 +67,7 @@ struct SetupSettingsView: View {
 
                 SetupChecklistRow(
                     title: "Enable accessibility access",
-                    detail: "This lets Whispur trigger shortcuts globally and paste text back into the active app.",
+                    detail: "This lets Orbit Dictation trigger shortcuts globally and paste text back into the active app.",
                     isComplete: appState.hotkeyManager.isAccessibilityGranted,
                     actionTitle: appState.hotkeyManager.isAccessibilityGranted ? nil : "Open",
                     action: appState.hotkeyManager.isAccessibilityGranted ? nil : { appState.requestAccessibilityAccess() }
@@ -107,11 +107,11 @@ struct SetupSettingsView: View {
     private var quickStartCard: some View {
         PreferenceCard(
             "How It Works",
-            detail: "Whispur keeps capture, cleanup, and paste in a single pass.",
+            detail: "Orbit Dictation keeps capture, cleanup, and paste in a single pass.",
             icon: "waveform.and.mic"
         ) {
             VStack(alignment: .leading, spacing: 12) {
-                Text("Hold your shortcut to speak, or use the toggle shortcut when you want to stay in dictation mode. After you stop, Whispur transcribes, cleans up the wording, and pastes the final text back into the frontmost app.")
+                Text("Hold your shortcut to speak, or use the toggle shortcut when you want to stay in dictation mode. After you stop, Orbit Dictation transcribes, cleans up the wording, and pastes the final text back into the frontmost app.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
 

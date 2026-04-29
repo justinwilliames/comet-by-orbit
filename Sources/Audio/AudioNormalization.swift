@@ -2,7 +2,7 @@ import AVFoundation
 import Foundation
 import os
 
-private let logger = Logger(subsystem: "ai.sophiie.whispur", category: "AudioNormalization")
+private let logger = Logger(subsystem: "team.yourorbit.OrbitDictation", category: "AudioNormalization")
 
 /// Converts captured audio into the STT-friendly `16 kHz / mono / WAV` format.
 enum AudioNormalization {

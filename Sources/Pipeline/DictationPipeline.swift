@@ -4,7 +4,7 @@ import Combine
 import Foundation
 import os
 
-private let logger = Logger(subsystem: "ai.sophiie.whispur", category: "Pipeline")
+private let logger = Logger(subsystem: "team.yourorbit.OrbitDictation", category: "Pipeline")
 
 @MainActor
 final class DictationPipeline: ObservableObject {
@@ -261,7 +261,7 @@ final class DictationPipeline: ObservableObject {
         case .restricted, .denied:
             presentError("Microphone access is unavailable. Enable it in System Settings > Privacy & Security > Microphone.")
         @unknown default:
-            presentError("Whispur could not determine microphone permissions.")
+            presentError("Orbit Dictation could not determine microphone permissions.")
         }
     }
 

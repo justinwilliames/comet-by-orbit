@@ -1,7 +1,7 @@
 import Foundation
 import os
 
-private let logger = Logger(subsystem: "ai.sophiie.whispur", category: "History")
+private let logger = Logger(subsystem: "team.yourorbit.OrbitDictation", category: "History")
 
 /// Stores the last N pipeline results for the Run Log.
 @MainActor
@@ -15,7 +15,7 @@ final class PipelineHistoryStore: ObservableObject {
         self.maxItems = maxItems
 
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        let dir = appSupport.appendingPathComponent("Whispur", isDirectory: true)
+        let dir = appSupport.appendingPathComponent("Orbit Dictation", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         self.fileURL = dir.appendingPathComponent("history.json")
 

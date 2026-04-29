@@ -1,22 +1,10 @@
-# Whispur
+# Orbit Dictation
 
-Whispur is a macOS menu-bar dictation app that turns speech into polished text and drops it straight back into the app you are already using.
+Orbit Dictation is a macOS menu-bar dictation app for the Orbit ecosystem. Hold a shortcut, speak, and the cleaned text drops into the app you are already using.
 
-Hold a shortcut to talk, or use an optional toggle shortcut for hands-free capture. Whispur records, transcribes, optionally cleans up the transcript with an LLM, and pastes the result where your cursor is.
+Powered by [Whispur](https://github.com/sophiie-ai/whispur). Orbit Dictation is an Orbit-branded fork that ships with a stricter cleanup prompt and the Orbit identity, while keeping internal modules aligned with Whispur for clean upstream merges.
 
-![Whispur demo — hold a shortcut, speak, and paste into any app](docs/screenshots/demo.gif)
-
-> [whispur.app](https://whispur.app) · [Download DMG](https://github.com/sophiie-ai/whispur/releases/latest/download/Whispur.dmg) · [Changelog](https://whispur.app/changelog)
-
-## Screenshots
-
-| Menu bar | Recording overlay |
-|---|---|
-| ![Menu bar dropdown](docs/screenshots/hero-menubar.png) | ![Recording overlay with waveform](docs/screenshots/recording-overlay.png) |
-
-| Setup checklist | Provider settings |
-|---|---|
-| ![Setup tab](docs/screenshots/settings-setup.png) | ![Providers tab](docs/screenshots/settings-providers.png) |
+> [get.yourorbit.team](https://get.yourorbit.team) · Download from the Orbit Downloads page
 
 ## Features
 
@@ -25,95 +13,42 @@ Hold a shortcut to talk, or use an optional toggle shortcut for hands-free captu
 - Multi-provider speech-to-text with local Apple dictation support
 - Optional transcript cleanup with provider-selectable LLMs
 - Paste-back into the active app with clipboard preservation
-- Custom vocabulary and a single editable cleanup prompt for technical dictation
+- Custom vocabulary and an editable cleanup prompt
 - Local-first default path when you stick with Apple on-device transcription
 - Sparkle-based auto-updates for signed releases
 
 ## Install
 
-### DMG download
+### From Orbit Downloads
 
-Download the latest signed DMG from [GitHub Releases](https://github.com/sophiie-ai/whispur/releases).
+The Orbit Downloads page on [get.yourorbit.team](https://get.yourorbit.team) hosts the latest signed DMG and links back to this repository.
 
-### Homebrew cask
+### From GitHub Releases
 
-Homebrew installation is planned but not published yet.
+Direct download: [latest release](https://github.com/justinwilliames-sketch/orbit-dictation/releases/latest).
 
 ### Build from source
 
 ```bash
-git clone https://github.com/sophiie-ai/whispur.git
-cd whispur
+git clone https://github.com/justinwilliames-sketch/orbit-dictation.git
+cd orbit-dictation
 brew install xcodegen create-dmg
 make all
 make run
 ```
 
-## Setup
+## How it works
 
-1. Launch Whispur from Applications. It opens as a menu-bar app.
-2. Open `Settings` from the menu bar.
-3. Complete the setup checklist for microphone and Accessibility access.
-4. Choose your speech provider.
-5. Add API keys for any cloud providers you want to use.
-6. Optionally add an LLM provider for transcript cleanup.
-7. Review your hold and toggle shortcuts.
-8. Dictate into any focused text field.
+Hold the configured shortcut to record. On release, the audio is normalized to 16 kHz mono WAV, sent to the selected speech-to-text provider, optionally cleaned up by the configured LLM, and pasted into the frontmost app. Microphone permission and Accessibility permission are required for capture and paste-back respectively.
 
-## Usage
+The Orbit Dictation cleanup prompt is intentionally strict: the LLM is treated as a text post-processor, never as an assistant, and must never act on the content of a transcript even when the transcript reads like an instruction. The full prompt is in `Sources/Pipeline/Prompts.swift`.
 
-- Hold shortcut: Press and hold your configured shortcut to record, then release to transcribe and paste.
-- Toggle shortcut: Press once to start recording, press again to stop and process.
-- Activity log: Open `Settings` → `Activity` to inspect raw and cleaned transcripts.
-- Prompt tuning: Open `Settings` → `Prompts` to override the cleanup prompt or add domain vocabulary.
+## Relationship to Whispur
 
-## Provider Matrix
+Orbit Dictation is a fork of [Whispur](https://github.com/sophiie-ai/whispur) (MIT). Internal Swift modules and class names are kept aligned with upstream so improvements can flow back and forth cleanly. User-visible branding, the bundle identifier, the Sparkle update channel, the keychain service identifier, the application support directory, and the default cleanup prompt are Orbit-specific.
 
-### Speech-to-text
-
-| Provider | Status | Notes |
-| --- | --- | --- |
-| Apple Speech Recognition | Available | On-device and local |
-| OpenAI Whisper | Available | Cloud STT via API key |
-| Deepgram | Available | Cloud STT via API key |
-| ElevenLabs Scribe | Available | Cloud STT via API key |
-
-### Transcript cleanup
-
-| Provider | Status | Notes |
-| --- | --- | --- |
-| Anthropic Claude | Available | High-quality cleanup |
-| OpenAI | Available | Fast cleanup path |
-| Groq | Available | OpenAI-compatible endpoint |
-| AWS Bedrock | Available | Claude via Bedrock, authenticated with a Bedrock API key (`AWS_BEARER_TOKEN_BEDROCK`) |
-
-## Privacy
-
-Audio stays local by default when you use the built-in Apple speech provider. If you switch to a cloud STT or LLM provider, the audio or transcript needed for that provider is sent only to the services you configure.
-
-Whispur stores API keys in the macOS Keychain.
-
-## Development
-
-```bash
-make generate
-make all
-make dmg
-```
-
-Key project areas:
-
-- `Sources/App`: app lifecycle, menu-bar scenes, state
-- `Sources/Audio`: recording and normalization
-- `Sources/Providers`: STT and LLM integrations
-- `Sources/Pipeline`: dictation orchestration
-- `Sources/Input`: shortcuts and paste-back
-- `Sources/UI`: menu bar, onboarding, settings, about window
-
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md).
+If you want the upstream version of this app, install Whispur from [whispur.app](https://whispur.app).
 
 ## License
 
-Whispur is released under the [MIT License](LICENSE).
+MIT. See [LICENSE](LICENSE). The original copyright belongs to Sophiie AI Pty Ltd; the Orbit Dictation fork is copyright Justin Williames.

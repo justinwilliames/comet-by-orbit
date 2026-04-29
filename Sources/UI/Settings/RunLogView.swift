@@ -12,7 +12,7 @@ struct RunLogView: View {
                 if appState.historyStore.items.isEmpty {
                     PreferenceCard(
                         "No Activity Yet",
-                        detail: "Run a dictation and Whispur will keep the recent cleaned and raw transcripts here.",
+                        detail: "Run a dictation and Orbit Dictation will keep the recent cleaned and raw transcripts here.",
                         icon: "waveform.slash"
                     ) {
                         Text("Your first successful dictation will appear in this timeline.")

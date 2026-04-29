@@ -16,14 +16,14 @@ struct WhispurApp: App {
         }
         .menuBarExtraStyle(.window)
 
-        Window("Whispur Settings", id: "settings") {
+        Window("Orbit Dictation Settings", id: "settings") {
             SettingsView(appState: appState)
                 .frame(minWidth: 860, minHeight: 620)
         }
         .defaultSize(width: 980, height: 680)
         .windowResizability(.contentSize)
 
-        Window("About Whispur", id: "about") {
+        Window("About Orbit Dictation", id: "about") {
             AboutView()
         }
         .defaultSize(width: 360, height: 360)
@@ -76,7 +76,7 @@ private struct MenuBarGlyphIcon: View {
             .scaledToFit()
             .frame(width: 16, height: 16)
             .foregroundStyle(tint)
-            .accessibilityLabel("Whispur")
+            .accessibilityLabel("Orbit Dictation")
     }
 }
 

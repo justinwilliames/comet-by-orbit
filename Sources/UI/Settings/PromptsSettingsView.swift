@@ -19,7 +19,7 @@ struct PromptsSettingsView: View {
     private var promptCard: some View {
         PreferenceCard(
             "Cleanup Prompt",
-            detail: "Optional. When set, this replaces the built-in cleanup prompt for every dictation. Leave empty to use Whispur's default.",
+            detail: "Optional. When set, this replaces the built-in cleanup prompt for every dictation. Leave empty to use Orbit Dictation's default.",
             icon: "text.bubble"
         ) {
             VStack(alignment: .leading, spacing: 12) {
@@ -65,7 +65,7 @@ struct PromptsSettingsView: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Learn from my edits")
                             .font(.callout.weight(.medium))
-                        Text("After a paste, Whispur re-reads the focused text field on your next dictation. If you changed a word, it asks before adding that word to this vocabulary.")
+                        Text("After a paste, Orbit Dictation re-reads the focused text field on your next dictation. If you changed a word, it asks before adding that word to this vocabulary.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
@@ -79,7 +79,7 @@ struct PromptsSettingsView: View {
     private var referenceCard: some View {
         PreferenceCard(
             "Default Reference",
-            detail: "Whispur's built-in cleanup prompt. Copy it as a starting point if you want to tweak instead of rewrite.",
+            detail: "Orbit Dictation's built-in cleanup prompt. Copy it as a starting point if you want to tweak instead of rewrite.",
             icon: "doc.text.magnifyingglass"
         ) {
             DisclosureGroup(isExpanded: $showsDefaultPrompt) {

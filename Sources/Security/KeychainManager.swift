@@ -28,7 +28,7 @@ enum KeychainKey: String, CaseIterable {
 final class KeychainManager {
     static let shared = KeychainManager()
 
-    private let service = "ai.sophiie.whispur"
+    private let service = "team.yourorbit.OrbitDictation"
 
     private init() {}
 

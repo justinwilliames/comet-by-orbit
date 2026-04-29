@@ -2,7 +2,7 @@ import Cocoa
 import Foundation
 import os
 
-private let logger = Logger(subsystem: "ai.sophiie.whispur", category: "HotkeyManager")
+private let logger = Logger(subsystem: "team.yourorbit.OrbitDictation", category: "HotkeyManager")
 private let trackedModifierKeyCodes: Set<UInt16> = [
     54, 55,       // Right Cmd, Left Cmd
     56, 60,       // Left Shift, Right Shift

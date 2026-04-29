@@ -2,7 +2,7 @@ import AppKit
 import Foundation
 import os
 
-private let logger = Logger(subsystem: "ai.sophiie.whispur", category: "TextInjector")
+private let logger = Logger(subsystem: "team.yourorbit.OrbitDictation", category: "TextInjector")
 
 /// Pastes text into the active application while preserving the previous clipboard contents when possible.
 enum TextInjector {

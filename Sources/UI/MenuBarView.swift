@@ -28,7 +28,7 @@ struct MenuBarView: View {
             if !appState.microphoneAccessGranted {
                 warningCard(
                     title: "Microphone Needed",
-                    detail: "Whispur can’t record until macOS microphone permission is granted.",
+                    detail: "Orbit Dictation can’t record until macOS microphone permission is granted.",
                     tint: .yellow,
                     buttonTitle: "Allow Microphone",
                     action: appState.requestMicrophoneAccess
@@ -52,7 +52,7 @@ struct MenuBarView: View {
     private var header: some View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 4) {
-                Text("Whispur")
+                Text("Orbit Dictation")
                     .font(.title3.weight(.semibold))
 
                 Text(appState.pipeline.statusTitle)

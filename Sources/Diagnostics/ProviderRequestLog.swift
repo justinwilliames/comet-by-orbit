@@ -1,7 +1,7 @@
 import Foundation
 import os
 
-private let providerRequestLogPersistenceLogger = Logger(subsystem: "ai.sophiie.whispur", category: "ProviderRequestLog")
+private let providerRequestLogPersistenceLogger = Logger(subsystem: "team.yourorbit.OrbitDictation", category: "ProviderRequestLog")
 
 enum ProviderRequestKind: String, Codable, CaseIterable, Identifiable {
     case stt = "STT"
@@ -35,7 +35,7 @@ final class ProviderRequestLog: ObservableObject {
         self.maxItems = maxItems
 
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        let directoryURL = appSupport.appendingPathComponent("Whispur", isDirectory: true)
+        let directoryURL = appSupport.appendingPathComponent("Orbit Dictation", isDirectory: true)
         try? FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
         self.fileURL = directoryURL.appendingPathComponent("provider-requests.json")
 

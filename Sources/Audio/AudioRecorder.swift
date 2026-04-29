@@ -3,7 +3,7 @@ import Combine
 import Foundation
 import os
 
-private let logger = Logger(subsystem: "ai.sophiie.whispur", category: "AudioRecorder")
+private let logger = Logger(subsystem: "team.yourorbit.OrbitDictation", category: "AudioRecorder")
 
 /// Records microphone input to a temporary file using `AVAudioEngine`.
 ///
@@ -19,7 +19,7 @@ final class AudioRecorder: ObservableObject {
     private var audioEngine: AVAudioEngine?
     private var audioFile: AVAudioFile?
     private var tempFileURL: URL?
-    private let fileQueue = DispatchQueue(label: "ai.sophiie.whispur.audio-file", qos: .userInitiated)
+    private let fileQueue = DispatchQueue(label: "team.yourorbit.OrbitDictation.audio-file", qos: .userInitiated)
 
     private var readyFired = false
     private var smoothedLevel: Float = 0

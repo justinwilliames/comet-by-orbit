@@ -1,7 +1,7 @@
 import Foundation
 import os
 
-private let providerHTTPLogger = Logger(subsystem: "ai.sophiie.whispur", category: "Providers")
+private let providerHTTPLogger = Logger(subsystem: "team.yourorbit.OrbitDictation", category: "Providers")
 
 private struct LoggedTransportError: Error {
     let underlying: Error
