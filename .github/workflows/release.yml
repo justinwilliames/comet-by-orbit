@@ -98,6 +98,42 @@ jobs:
           echo "app_path=$APP_PATH" >> "$GITHUB_OUTPUT"
           echo "Found .app at: $APP_PATH"
 
+      # The xcodebuild step above runs with `CODE_SIGNING_ALLOWED=NO`, which
+      # produces a binary with only the *linker-signed* ad-hoc stamp the arm64
+      # linker emits during compilation. macOS treats linker-signed binaries
+      # as effectively unsigned for TCC purposes — Accessibility / Mic /
+      # Keychain grants are silently ignored even when the user has toggled
+      # the permission on in System Settings.
+      #
+      # Replacing it with an explicit ad-hoc signature (`codesign --sign -`)
+      # produces a code signature with a real Designated Requirement keyed to
+      # the binary's CDHash. TCC honours that. Doesn't replace a real
+      # Developer ID for distribution but is the highest level of unsigned
+      # distribution macOS will treat as a stable identity.
+      - name: Replace linker-signed stamp with explicit ad-hoc signature
+        run: |
+          set -e
+          APP_PATH="${{ steps.locate.outputs.app_path }}"
+
+          echo "Before re-signing:"
+          codesign -dv --verbose=4 "$APP_PATH" 2>&1 | grep -E "Signature|flags|CDHash" || true
+
+          # `--deep` re-signs nested frameworks (Sparkle.framework) so the
+          # bundle is internally consistent. `--force` overrides the existing
+          # linker-signed signature. `--options runtime` enables the hardened
+          # runtime flag, which is required for any future notarisation step
+          # to accept the bundle without complaint.
+          codesign --force --deep --options runtime --sign - "$APP_PATH"
+
+          echo "After re-signing:"
+          codesign -dv --verbose=4 "$APP_PATH" 2>&1 | grep -E "Signature|flags|CDHash" || true
+
+          # Sanity check: signature should be `adhoc` without `linker-signed`.
+          if codesign -dv --verbose=4 "$APP_PATH" 2>&1 | grep -q "linker-signed"; then
+            echo "::error::Signature still flagged linker-signed after explicit codesign"
+            exit 1
+          fi
+
       - name: Build .dmg via hdiutil
         id: dmg
         run: |
