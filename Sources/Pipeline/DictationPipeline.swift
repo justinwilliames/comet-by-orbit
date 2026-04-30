@@ -423,21 +423,35 @@ final class DictationPipeline: ObservableObject {
                     }
 
                     if let normalizedCleanedTranscript = normalizedTranscriptText(from: extractedText) {
-                        // Output-length sanity check. If the LLM has run away
-                        // (paraphrased into a long explanation, looped on a
-                        // single sentence, switched grammatical person, etc.),
-                        // the cleaned output ends up dramatically longer than
-                        // the input. Trust the prompt to do the right thing
-                        // most of the time, but reject the output and fall
-                        // back to the raw transcript when it's clearly drifted.
+                        // Output-length sanity check. Catches runaway LLM
+                        // expansion (paraphrasing into long second-person
+                        // prose, sentence loops, etc.). Two thresholds because
+                        // bulleting legitimately adds words: every `• ` marker
+                        // splits as a separate "word" under whitespace
+                        // tokenisation, and a `Header:` line + blank line add
+                        // structure characters. Prose expansion is the
+                        // failure mode worth catching; list reformatting is
+                        // not.
                         let rawWords = normalizedRawTranscript.split { $0.isWhitespace }.count
                         let cleanedWords = normalizedCleanedTranscript.split { $0.isWhitespace }.count
                         let wordRatio = Double(cleanedWords) / Double(max(1, rawWords))
                         let charRatio = Double(normalizedCleanedTranscript.count) / Double(max(1, normalizedRawTranscript.count))
+                        let outputIsBulleted = Self.outputContainsBullets(normalizedCleanedTranscript)
 
-                        if wordRatio > 1.5 || charRatio > 2.0 {
+                        let tripped: Bool
+                        if outputIsBulleted {
+                            // Bulleted output is structural reformatting, not
+                            // runaway prose. Allow up to ~3× character
+                            // expansion (header + bullets + capitalisation
+                            // overhead) before treating it as suspicious.
+                            tripped = charRatio > 3.0
+                        } else {
+                            tripped = wordRatio > 1.5 || charRatio > 2.0
+                        }
+
+                        if tripped {
                             logger.warning(
-                                "LLM cleanup expansion guardrail tripped (\(cleanedWords, privacy: .public)w / \(rawWords, privacy: .public)w, ratio \(String(format: "%.2f", wordRatio), privacy: .public)) — using raw transcript instead"
+                                "LLM cleanup expansion guardrail tripped (\(cleanedWords, privacy: .public)w / \(rawWords, privacy: .public)w, charRatio \(String(format: "%.2f", charRatio), privacy: .public), bulleted=\(outputIsBulleted ? "true" : "false", privacy: .public)) — using raw transcript instead"
                             )
                             cleanedTranscript = normalizedRawTranscript
                         } else {
