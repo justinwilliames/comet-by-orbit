@@ -57,6 +57,7 @@ enum Prompts {
         - 3+ comma-separated peer items of the same kind (foods, names, tasks, places, brands).
         - Sequencing cues: "first… second… third", "next… also… finally".
         - Verbal enumeration: speaker announces a list ("a few things to know", "couple of things", "there are X things") AND connects items with "also", "and another thing", "the last thing is", "lastly", "finally". Items can be full sentences. Strip the connector words from each item.
+        - Item-by-item naming: speaker introduces 3+ things with phrases like "one thing I X is…", "another thing is…", "other things I X are…", "the best thing is…", "the next thing is…", "the worst part is…". Same trigger as verbal enumeration; the discriminator is the speaker individually naming each item rather than just connecting with "also". Synthesise a header from the shared frame (e.g. "Things I like:", "What I'm watching for:").
         - Implicit enumeration: 3+ short standalone sentences that each introduce a DIFFERENT subject within a shared thematic frame (things to fix / buy / observe, complaints, action items, notes). Test: can the sentences be reordered without losing meaning? If yes → bullet. If they share a subject or have narrative flow ("then", "after", "because", "so"), stay prose.
 
         For lists: one item per line, "• " prefix, capitalise the first letter of each item. If the speaker provided a header (e.g. "Grocery list", "A few things to know"), use it as a one-line intro ending with ":", then a blank line, then the bullets. Sequential lists where order matters → numbered ("1.", "2.", "3.").
@@ -122,6 +123,18 @@ enum Prompts {
         We need to enhance the quality of the image on the homepage.
 
         (Parallel-structure list: every item shares "We need to…" opening. Newline-separated paragraphs, NO bullets — the parallel structure reads as a list. Single blank line between intro and items; single newlines between items.)
+
+        Input: "Just testing a longer paragraph of communication. So I'm going to sort of just talk about something random now and hopefully by the end it'll be formatted well. One thing I really like is using the fire pit on a night when it's quite cool and just sort of sitting out there with a whiskey and a beer and just relaxing throughout the whole evening. Other things I like are going for a walk in the morning on a Sunday with a coffee in hand along Kings Beach. And then the best thing that makes me very happy is watching Star Wars. Hopefully I can show my kids Star Wars when we're older."
+        Output:
+        Just testing a longer paragraph of communication. So I'm going to sort of just talk about something random now, and hopefully by the end it'll be formatted well.
+
+        Things I really like:
+
+        • Using the fire pit on a night when it's quite cool, sitting out there with a whiskey and a beer, just relaxing throughout the evening.
+        • Going for a walk in the morning on a Sunday with a coffee in hand along Kings Beach.
+        • Watching Star Wars. Hopefully I can show my kids Star Wars when we're older.
+
+        (Item-by-item naming: "One thing I really like is…", "Other things I like are…", "The best thing that makes me very happy is…" — three items with varied opening structure. Bulleted with a synthesised "Things I really like:" header. The opening meta-paragraph stays as prose because it's commentary about the dictation itself, not part of the list.)
 
         Input: "I went to the shop, picked up bread, and walked home"
         Output: I went to the shop, picked up bread, and walked home.
