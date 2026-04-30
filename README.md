@@ -10,12 +10,30 @@ Powered by [Whispur](https://github.com/sophiie-ai/whispur). Orbit Dictation is 
 
 - Lives in the macOS menu bar instead of taking over your desktop
 - Hold-to-talk or toggle-to-latch recording
+- Strict cleanup prompt — the LLM is treated as a text post-processor, never as an assistant or participant
+- Rich-text list paste (real bullets and indent in Mail / Notes / Notion / Slack; plain text in code editors)
 - Multi-provider speech-to-text with local Apple dictation support
-- Optional transcript cleanup with provider-selectable LLMs
-- Paste-back into the active app with clipboard preservation
 - Custom vocabulary and an editable cleanup prompt
-- Local-first default path when you stick with Apple on-device transcription
 - Sparkle-based auto-updates
+
+## Recommended setup — one free Groq API key
+
+The simplest way to use Orbit Dictation: a single API key from **[Groq](https://console.groq.com/keys)** powers both speech recognition and cleanup. Groq's free tier is generous and usually covers daily dictation use without spending a cent.
+
+1. Sign up at [console.groq.com](https://console.groq.com/keys) — no credit card needed
+2. Create an API key, copy it to clipboard
+3. Open Orbit Dictation → Settings → Providers → paste into **Groq API Key** under "Recommended setup"
+4. Click **Use Groq for speech + cleanup**
+
+Orbit Dictation will use Groq's `whisper-large-v3` for speech and `llama-3.3-70b-versatile` for cleanup — no model picking required.
+
+### Apple-only alternative
+
+Prefer zero cloud? Settings → Providers → **Use Apple Dictation**. Apple's on-device speech recognition runs locally with no API keys. **The trade-off:** cleanup is off in this mode, so filler words, run-ons, and self-corrections paste verbatim with light punctuation only. Pick this if privacy matters more than polish.
+
+### Other providers
+
+OpenAI, Anthropic, Deepgram, ElevenLabs, and AWS Bedrock are all supported under Settings → Providers → **Other providers** → expand **Advanced configuration**. Mix-and-match speech and cleanup providers independently.
 
 ## First-time setup
 
@@ -111,11 +129,30 @@ make run
 
 Requires Xcode 16+ with the macOS 14 SDK.
 
-## Relationship to Whispur
+## What's different from Whispur
 
-Orbit Dictation is a fork of [Whispur](https://github.com/sophiie-ai/whispur) (MIT). Internal Swift modules and class names are kept aligned with upstream so improvements can flow back and forth cleanly. User-visible branding, the bundle identifier, the Sparkle update channel, the Keychain service identifier, the Application Support directory, and the default cleanup prompt are Orbit-specific.
+Orbit Dictation is an MIT-licensed fork of [Whispur](https://github.com/sophiie-ai/whispur). Internal Swift modules and class names stay aligned with upstream so improvements can flow back and forth cleanly. The factual differences:
 
-If you want the upstream version of this app, install Whispur from [whispur.app](https://whispur.app).
+**Cleanup pipeline**
+- Strict cleanup prompt with explicit person-matching, length-cap, paragraph-break, list-trigger, and grammar-correctness rules. The default in Whispur is lighter and more conversational; ours treats the LLM as a text post-processor that must never act on the transcript content even when it reads like an instruction.
+- Dynamic `max_tokens` cap based on input length (`inputChars/2 + 50`, floor 150). Whispur uses Sparkle's default 2048 — too lax for an unbounded loop.
+- Output-length sanity check that falls back to the raw transcript when the LLM produces more than 1.5× word expansion.
+
+**Output format**
+- Rich-text list paste: when the cleanup output contains list lines (`• item`), Orbit Dictation writes both plain and RTF representations to the pasteboard. Mail / Notes / Notion / Slack render real bulleted lists; code editors get plain text. Whispur paste is plain-text-only.
+
+**UX & onboarding**
+- Recommended setup card features Groq with a single-key path; full provider matrix is hidden under "Other providers → Advanced configuration". Whispur exposes all 5 STT and 4 LLM options at the top level.
+- Auto-open Settings on relaunch, in-app Live Logs viewer (OSLogStore), Recheck button on permission rows, Restart button + Nuclear Reset commands in Troubleshooting, App Translocation guard at launch, Sparkle auto-check toggle exposed in Settings.
+
+**Brand & distribution**
+- Orbit identity (logo, indigo palette `#6366F1`, mic SF Symbol menu-bar icon).
+- Bundle identifier: `team.yourorbit.OrbitDictation` (Whispur is `ai.sophiie.whispur`); Application Support and Keychain service rescoped to match.
+- Distributed from `get.yourorbit.team/orbit-dictation` and this repo's GitHub Releases. Currently ad-hoc signed (proper Developer ID signing pending).
+
+**Internal symbols stay Whispur-named** — `WhispurApp`, `HotkeyManager`, etc. — so `git fetch upstream` merges cleanly. Only user-visible strings, the bundle identifier, the Sparkle update channel, and the default cleanup prompt are Orbit-specific.
+
+If you want the upstream version, install Whispur from [whispur.app](https://whispur.app).
 
 ## License
 

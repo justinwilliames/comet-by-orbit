@@ -1,93 +1,172 @@
 import SwiftUI
 
 /// Provider configuration: API keys and active provider selection.
+///
+/// Top-level UX is decision-fatigue-minimised: one Recommended setup using
+/// Groq (free tier covers most users, single API key powers both speech and
+/// cleanup), one Apple-only fallback for users who want zero cloud, and
+/// everything else is hidden behind an "Other providers" disclosure for
+/// power users who want to mix-and-match.
 struct ProvidersSettingsView: View {
     @ObservedObject var appState: AppState
+    @State private var advancedExpanded: Bool = false
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                speechCard
+                recommendedCard
+                appleOnlyCard
+                advancedCard
                 languagesCard
-                cleanupCard
             }
             .padding(24)
         }
     }
 
-    private var languagesCard: some View {
-        PreferenceCard(
-            "Preferred Language",
-            detail: "Pick the language you speak. Orbit Dictation sends this as a hint to the selected STT provider. Auto-detect asks the provider to identify the language itself — best when you switch between languages.",
-            icon: "character.bubble"
-        ) {
-            STTLanguagePicker(appState: appState)
-        }
+    // MARK: - Recommended (Groq)
+
+    private var isOnRecommendedSetup: Bool {
+        appState.selectedSTT == .groqWhisper && appState.selectedLLM == .groq
     }
 
-    private var speechCard: some View {
+    private var groqKeyConfigured: Bool {
+        appState.keychain.has(.groqAPIKey)
+    }
+
+    private var recommendedCard: some View {
         PreferenceCard(
-            "Speech-to-Text",
-            detail: "Pick the transcription service Orbit Dictation should call after recording.",
-            icon: "waveform.badge.mic"
+            "Recommended setup",
+            detail: "One free API key from Groq powers both speech recognition and cleanup. Free tier is generous — usually plenty for daily dictation use.",
+            icon: "sparkles"
         ) {
             VStack(alignment: .leading, spacing: 14) {
-                Picker("Speech provider", selection: $appState.selectedSTT) {
-                    ForEach(STTProviderID.allCases) { provider in
-                        Text(provider.displayName).tag(provider)
+                HStack(spacing: 8) {
+                    PreferenceBadge(title: "Recommended", tone: .good)
+                    PreferenceBadge(
+                        title: groqKeyConfigured ? "Key configured" : "Key needed",
+                        tone: groqKeyConfigured ? .good : .warning
+                    )
+                    if isOnRecommendedSetup {
+                        PreferenceBadge(title: "Active", tone: .good)
+                    }
+                    Spacer()
+                    Link(destination: URL(string: "https://console.groq.com/keys")!) {
+                        Label("Get a free key", systemImage: "arrow.up.forward.app")
+                            .font(.caption.weight(.medium))
                     }
                 }
-                .pickerStyle(.menu)
-                .frame(width: 250)
 
-                ForEach(STTProviderID.allCases, id: \.self) { provider in
-                    ProviderConfigurationCard(
-                        name: provider.displayName,
-                        note: provider == .apple
-                            ? "Runs on-device and works without an API key."
-                            : "Configure credentials in Keychain before using this provider.",
-                        isActive: appState.selectedSTT == provider,
-                        isConfigured: !provider.requiresAPIKey || appState.keychain.hasKeysFor(stt: provider)
-                    ) {
-                        if provider.requiresAPIKey {
-                            ForEach(provider.keychainKeys, id: \.rawValue) { key in
-                                APIKeyField(
-                                    label: key.displayName,
-                                    key: key,
-                                    keychain: appState.keychain
-                                )
-                            }
-                        }
-                    }
+                Text("Sign up at console.groq.com (no credit card needed), create an API key, paste it here. Orbit Dictation uses Groq's whisper-large-v3 for speech and Llama 3.3 70B for cleanup — Groq's free models, picked for you.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                APIKeyField(
+                    label: "Groq API Key",
+                    key: .groqAPIKey,
+                    keychain: appState.keychain
+                )
+
+                Button {
+                    appState.selectedSTT = .groqWhisper
+                    appState.selectedLLM = .groq
+                } label: {
+                    Label(
+                        isOnRecommendedSetup ? "Using Groq for speech + cleanup" : "Use Groq for speech + cleanup",
+                        systemImage: isOnRecommendedSetup ? "checkmark.circle.fill" : "arrow.right.circle"
+                    )
                 }
+                .buttonStyle(.borderedProminent)
+                .tint(.orbit)
+                .disabled(isOnRecommendedSetup)
             }
         }
     }
 
-    private var cleanupCard: some View {
-        PreferenceCard(
-            "Cleanup Model",
-            detail: "Post-processing adds punctuation, removes filler, and smooths dictation before paste.",
-            icon: "wand.and.stars"
-        ) {
-            VStack(alignment: .leading, spacing: 14) {
-                Picker("Cleanup provider", selection: $appState.selectedLLM) {
-                    ForEach(LLMProviderID.allCases) { provider in
-                        Text(provider.displayName).tag(provider)
-                    }
-                }
-                .pickerStyle(.menu)
-                .frame(width: 250)
+    // MARK: - Apple-only path
 
-                ForEach(LLMProviderID.allCases, id: \.self) { provider in
-                    ProviderConfigurationCard(
-                        name: provider.displayName,
-                        note: appState.selectedLLM == provider && !appState.isSelectedLLMConfigured
-                            ? "Orbit Dictation will paste raw transcripts until credentials are added."
-                            : "Use this provider for transcript cleanup after transcription.",
-                        isActive: appState.selectedLLM == provider,
-                        isConfigured: appState.keychain.hasKeysFor(llm: provider)
-                    ) {
+    private var isOnAppleOnly: Bool {
+        appState.selectedSTT == .apple
+    }
+
+    private var appleOnlyCard: some View {
+        PreferenceCard(
+            "Or just use Apple Dictation",
+            detail: "Apple's on-device speech recognition runs locally with zero API keys. The recording stays on your Mac and Orbit Dictation pastes the raw transcript with light punctuation only.",
+            icon: "applelogo"
+        ) {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Trade-offs to know about:")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("• Transcription is good but not as accurate as Whisper.")
+                    Text("• Cleanup is off — filler words, run-ons, and self-corrections all paste verbatim.")
+                    Text("• Apple may need a one-time language model download the first time you use it.")
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+                Button {
+                    appState.selectedSTT = .apple
+                } label: {
+                    Label(
+                        isOnAppleOnly ? "Using Apple Dictation" : "Use Apple Dictation",
+                        systemImage: isOnAppleOnly ? "checkmark.circle.fill" : "applelogo"
+                    )
+                }
+                .buttonStyle(.bordered)
+                .disabled(isOnAppleOnly)
+            }
+        }
+    }
+
+    // MARK: - Advanced (full provider matrix)
+
+    private var advancedCard: some View {
+        PreferenceCard(
+            "Other providers",
+            detail: "Bring your own keys for OpenAI, Anthropic, Deepgram, ElevenLabs, or AWS Bedrock. Mix-and-match speech and cleanup providers independently.",
+            icon: "slider.horizontal.3"
+        ) {
+            DisclosureGroup("Advanced configuration", isExpanded: $advancedExpanded) {
+                VStack(alignment: .leading, spacing: 18) {
+                    speechCard
+                    cleanupCard
+                }
+                .padding(.top, 12)
+            }
+        }
+    }
+
+    private var speechCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Speech-to-Text")
+                .font(.subheadline.weight(.semibold))
+
+            Text("Pick which transcription service Orbit Dictation calls after recording.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            Picker("Speech provider", selection: $appState.selectedSTT) {
+                ForEach(STTProviderID.allCases) { provider in
+                    Text(provider.displayName).tag(provider)
+                }
+            }
+            .pickerStyle(.menu)
+            .frame(width: 250)
+
+            ForEach(STTProviderID.allCases, id: \.self) { provider in
+                ProviderConfigurationCard(
+                    name: provider.displayName,
+                    note: provider == .apple
+                        ? "Runs on-device and works without an API key."
+                        : "Configure credentials in Keychain before using this provider.",
+                    isActive: appState.selectedSTT == provider,
+                    isConfigured: !provider.requiresAPIKey || appState.keychain.hasKeysFor(stt: provider)
+                ) {
+                    if provider.requiresAPIKey {
                         ForEach(provider.keychainKeys, id: \.rawValue) { key in
                             APIKeyField(
                                 label: key.displayName,
@@ -98,6 +177,56 @@ struct ProvidersSettingsView: View {
                     }
                 }
             }
+        }
+    }
+
+    private var cleanupCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Cleanup Model")
+                .font(.subheadline.weight(.semibold))
+
+            Text("Post-processing adds punctuation, removes filler, and smooths dictation before paste. Skipped automatically if no key is configured.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            Picker("Cleanup provider", selection: $appState.selectedLLM) {
+                ForEach(LLMProviderID.allCases) { provider in
+                    Text(provider.displayName).tag(provider)
+                }
+            }
+            .pickerStyle(.menu)
+            .frame(width: 250)
+
+            ForEach(LLMProviderID.allCases, id: \.self) { provider in
+                ProviderConfigurationCard(
+                    name: provider.displayName,
+                    note: appState.selectedLLM == provider && !appState.isSelectedLLMConfigured
+                        ? "Orbit Dictation will paste raw transcripts until credentials are added."
+                        : "Use this provider for transcript cleanup after transcription.",
+                    isActive: appState.selectedLLM == provider,
+                    isConfigured: appState.keychain.hasKeysFor(llm: provider)
+                ) {
+                    ForEach(provider.keychainKeys, id: \.rawValue) { key in
+                        APIKeyField(
+                            label: key.displayName,
+                            key: key,
+                            keychain: appState.keychain
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: - Languages
+
+    private var languagesCard: some View {
+        PreferenceCard(
+            "Preferred Language",
+            detail: "Pick the language you speak. Orbit Dictation sends this as a hint to the selected speech provider. Auto-detect asks the provider to identify the language itself — best when you switch between languages.",
+            icon: "character.bubble"
+        ) {
+            STTLanguagePicker(appState: appState)
         }
     }
 }
