@@ -192,13 +192,70 @@ struct SetupSettingsView: View {
                     .padding(.top, 8)
                 }
 
+                DisclosureGroup("Still stuck? Nuclear reset (recommended last)") {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("If remove + re-add + toggle still doesn't pick up, the system permission database (tccd) has a cached entry pointing at a stale bundle. Wipe all permission grants for Orbit Dictation and start fresh:")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        Text(Self.tccResetCommand)
+                            .font(.system(.caption, design: .monospaced))
+                            .textSelection(.enabled)
+                            .padding(10)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+
+                        HStack(spacing: 8) {
+                            Button("Copy reset commands") {
+                                NSPasteboard.general.clearContents()
+                                NSPasteboard.general.setString(Self.tccResetCommand, forType: .string)
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+
+                            Button("Find duplicate copies") {
+                                NSPasteboard.general.clearContents()
+                                NSPasteboard.general.setString(Self.findBundlesCommand, forType: .string)
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+
+                            Spacer()
+                        }
+
+                        Text("After running the commands, quit Orbit Dictation completely (menu-bar icon → Quit), wait a few seconds, then relaunch from /Applications. Re-grant when prompted.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(.top, 8)
+                }
+
+                Divider()
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("After granting in System Settings, the running app must restart for AXIsProcessTrusted() to see the new state. Click below to relaunch Orbit Dictation in one step.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Button {
+                        Self.relaunchApp()
+                    } label: {
+                        Label("Restart Orbit Dictation", systemImage: "arrow.clockwise.circle")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.regular)
+                }
+
                 Divider()
 
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Why this happens")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
-                    Text("Orbit Dictation currently ships unsigned (no Apple Developer Programme certificate yet). macOS keys permission grants — Accessibility, Microphone, Keychain access, and Gatekeeper approval — to the running binary's identity. Signed apps use the signing identity, which is stable across versions. Unsigned apps fall back to the binary hash, which changes on every Sparkle update. That's why grants need refreshing after updates. Signing the app fixes all four issues above permanently.")
+                    Text("Orbit Dictation currently ships unsigned (no Apple Developer Programme certificate yet). macOS keys permission grants — Accessibility, Microphone, Keychain access, and Gatekeeper approval — to the running binary's identity. Signed apps use the signing identity, which is stable across versions. Unsigned apps fall back to the binary hash, which changes on every Sparkle update. That's why grants need refreshing after updates, and why a running process must restart to pick up a fresh grant. Signing the app fixes all four issues above permanently.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -215,6 +272,30 @@ struct SetupSettingsView: View {
                     }
                     Spacer()
                 }
+            }
+        }
+    }
+
+    private static let tccResetCommand = """
+        tccutil reset Accessibility team.yourorbit.OrbitDictation
+        tccutil reset Microphone team.yourorbit.OrbitDictation
+        """
+
+    private static let findBundlesCommand =
+        #"mdfind 'kMDItemCFBundleIdentifier == "team.yourorbit.OrbitDictation"'"#
+
+    /// Relaunch the app cleanly: spawn a new instance via NSWorkspace, then
+    /// terminate the current process. NSWorkspace's `createsNewApplicationInstance`
+    /// flag lets the second instance start before we exit, so the user briefly
+    /// sees nothing rather than an error. Required after granting Accessibility
+    /// because `AXIsProcessTrusted()` only re-reads on process launch.
+    private static func relaunchApp() {
+        let bundleURL = Bundle.main.bundleURL
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.createsNewApplicationInstance = true
+        NSWorkspace.shared.openApplication(at: bundleURL, configuration: configuration) { _, _ in
+            DispatchQueue.main.async {
+                NSApp.terminate(nil)
             }
         }
     }
