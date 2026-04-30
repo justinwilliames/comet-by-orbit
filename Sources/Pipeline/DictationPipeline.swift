@@ -388,6 +388,14 @@ final class DictationPipeline: ObservableObject {
                         )
                     )
 
+                    // Diagnostic logging — surfaces what the model actually
+                    // emitted so the in-app Live Logs panel can show whether
+                    // it's following the <analysis>/<output> format and what
+                    // its reasoning concluded.
+                    logger.info(
+                        "LLM raw (first 400): \(response.text.prefix(400), privacy: .public)"
+                    )
+
                     // Extract the cleaned text from the structured response.
                     // The system prompt instructs the model to emit
                     // <analysis>…</analysis><output>…</output>; the analysis
@@ -395,7 +403,25 @@ final class DictationPipeline: ObservableObject {
                     // <output> content reaches the user. If the model didn't
                     // use the tags (older provider, prompt drift), fall back
                     // to the whole response text.
-                    let extractedText = Self.extractCleanedOutput(from: response.text)
+                    var extractedText = Self.extractCleanedOutput(from: response.text)
+
+                    // Programmatic list-format safety net. The LLM is
+                    // unreliable at bulleting on short list-shaped inputs
+                    // (it sometimes treats them as already clean and echoes
+                    // them back as prose). When the input has clear list
+                    // signals — a list-cue word like "groceries" / "list of"
+                    // plus 2+ commas — and the model's output lacks bullets,
+                    // re-format programmatically rather than ship a comma jam.
+                    if Self.hasListSignals(in: normalizedRawTranscript)
+                        && !Self.outputContainsBullets(extractedText) {
+                        if let formatted = Self.formatAsList(extractedText) {
+                            logger.info(
+                                "List-format safety net fired: input had list signals, LLM output didn't — applied deterministic bulletisation"
+                            )
+                            extractedText = formatted
+                        }
+                    }
+
                     if let normalizedCleanedTranscript = normalizedTranscriptText(from: extractedText) {
                         // Output-length sanity check. If the LLM has run away
                         // (paraphrased into a long explanation, looped on a
@@ -485,6 +511,112 @@ final class DictationPipeline: ObservableObject {
         Preserve these proper nouns / terms exactly as spelled when they appear \
         (do not paraphrase, translate, or correct them): \(joined).
         """
+    }
+
+    /// List-cue words that, when combined with comma-separated items in the
+    /// input, are a strong signal the user wanted a bulleted list.
+    private static let listCueWords: Set<String> = [
+        "list", "lists",
+        "groceries", "grocery",
+        "shopping",
+        "items",
+        "to-do", "todo", "to do",
+        "agenda",
+        "checklist",
+        "options",
+        "priorities",
+    ]
+
+    /// Returns `true` if the input has the structural signals of a list:
+    /// a list-cue word AND at least two commas (i.e. 3+ items).
+    static func hasListSignals(in input: String) -> Bool {
+        let lowered = input.lowercased()
+        let hasCue = listCueWords.contains { lowered.contains($0) }
+        guard hasCue else { return false }
+        let commaCount = input.filter { $0 == "," }.count
+        return commaCount >= 2
+    }
+
+    /// `true` if any line in `output` starts with a bullet glyph (`•`, `-`, `*`)
+    /// followed by a space — the markers our list rule and rich-text paste
+    /// recognise.
+    static func outputContainsBullets(_ output: String) -> Bool {
+        output.components(separatedBy: "\n").contains { line in
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            return trimmed.hasPrefix("• ") || trimmed.hasPrefix("- ") || trimmed.hasPrefix("* ")
+        }
+    }
+
+    /// Deterministically reformat `text` as a bulleted list, parsing a
+    /// header (anything before the first `.` or `:` that contains a list cue
+    /// word) and items (whatever follows, split on commas and the conjunction
+    /// "and"). Returns `nil` if the parser can't find at least 3 short items
+    /// — caller should leave the text alone in that case.
+    ///
+    /// Designed as a safety net for when the LLM fails to bullet despite
+    /// clear list signals in the input. Not a general Markdown parser.
+    static func formatAsList(_ text: String) -> String? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        // Try to peel off a header: text before the first `.` or `:` if it
+        // contains a list cue and is reasonably short (≤ 6 words).
+        var header: String? = nil
+        var body = trimmed
+
+        let separatorIndex = trimmed.firstIndex { char in
+            char == "." || char == ":"
+        }
+
+        if let separatorIndex {
+            let beforeSep = String(trimmed[..<separatorIndex]).trimmingCharacters(in: .whitespaces)
+            let afterSep = String(trimmed[trimmed.index(after: separatorIndex)...])
+                .trimmingCharacters(in: .whitespaces)
+            let beforeLower = beforeSep.lowercased()
+            let beforeWordCount = beforeSep.split { $0.isWhitespace }.count
+            let containsCue = listCueWords.contains { beforeLower.contains($0) }
+            if containsCue && beforeWordCount <= 6 && !afterSep.isEmpty {
+                header = beforeSep
+                body = afterSep
+            }
+        }
+
+        // Strip terminal punctuation so the last item doesn't carry it.
+        let bodyClean = body.trimmingCharacters(in: CharacterSet(charactersIn: ".!?;"))
+
+        // Split on commas first; for each comma-segment, also split on
+        // " and " / " & " to pick up the final-conjunction case
+        // ("apples, bananas, and cherries").
+        let rawItems = bodyClean
+            .components(separatedBy: ",")
+            .flatMap { segment -> [String] in
+                segment.replacingOccurrences(of: " & ", with: " and ")
+                    .components(separatedBy: " and ")
+            }
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+
+        // Items should be short noun phrases — drop anything looking like a
+        // sentence (more than 6 words). Bail entirely if too few survive.
+        let items = rawItems.filter { $0.split { $0.isWhitespace }.count <= 6 }
+        guard items.count >= 3 else { return nil }
+
+        var lines: [String] = []
+        if let header {
+            // Use a colon header even if the source ended with a period.
+            let headerClean = header.trimmingCharacters(in: CharacterSet(charactersIn: ".:"))
+            lines.append("\(headerClean):")
+            lines.append("")
+        }
+        for item in items {
+            lines.append("• " + capitaliseFirst(item))
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    private static func capitaliseFirst(_ str: String) -> String {
+        guard let first = str.first else { return str }
+        return String(first).uppercased() + str.dropFirst()
     }
 
     /// Extract the cleaned text from an LLM response that follows the
