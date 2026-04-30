@@ -66,21 +66,34 @@ private struct MenuBarStatusIcon: View {
 }
 
 private struct MenuBarGlyphIcon: View {
-    var symbol: String = "mic"
+    /// When non-nil, render this SF Symbol instead of the brand asset
+    /// (used for error/status states like `mic.slash`).
+    var symbol: String? = nil
     var tint: Color = .primary
 
     var body: some View {
-        // SF Symbols template-render reliably in the menu bar at any size.
-        // The system tints opaque pixels with the menu-bar foreground colour
-        // (light/dark-mode aware) so we don't need a separate asset. Frame
-        // sizing is the standard 16pt menu-bar glyph; SwiftUI scales the
-        // symbol to fit and Retina handles the doubling.
-        Image(systemName: symbol)
-            .resizable()
-            .scaledToFit()
-            .frame(width: 16, height: 16)
-            .foregroundStyle(tint)
-            .accessibilityLabel("Comet")
+        Group {
+            if let symbol {
+                // SF Symbol path — used for `mic.slash` and other system
+                // states where the brand asset would be misleading.
+                Image(systemName: symbol)
+                    .resizable()
+                    .scaledToFit()
+            } else {
+                // Brand asset — Comet handheld-mic silhouette. Template-
+                // rendered so macOS tints it to the menu-bar foreground
+                // colour (light/dark adaptive). Distinct enough at 16pt
+                // to be picked out from neighbouring menu-bar items
+                // without being confused with Orion's planet glyph.
+                Image("MenuBarIcon")
+                    .resizable()
+                    .renderingMode(.template)
+                    .scaledToFit()
+            }
+        }
+        .frame(width: 16, height: 16)
+        .foregroundStyle(tint)
+        .accessibilityLabel("Comet")
     }
 }
 
