@@ -75,7 +75,10 @@ final class LogReader: ObservableObject {
         }
     }
 
-    private static func levelString(_ level: OSLogEntryLog.Level) -> String {
+    // `nonisolated` so the detached refresh Task can call it without
+    // hopping back to the main actor. The function is pure — no state
+    // access — so isolation isn't needed.
+    nonisolated private static func levelString(_ level: OSLogEntryLog.Level) -> String {
         switch level {
         case .undefined: return "—"
         case .debug:     return "DEBUG"
