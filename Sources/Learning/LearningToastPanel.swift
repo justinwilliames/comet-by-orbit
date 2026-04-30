@@ -116,7 +116,7 @@ private struct LearningToastView: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
                 Image(systemName: "sparkles")
-                    .foregroundStyle(.orbit)
+                    .foregroundStyle(Color.orbit)
                 Text("Learn from your edits?")
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.white)
