@@ -69,7 +69,7 @@ struct SetupSettingsView: View {
 
                 SetupChecklistRow(
                     title: "Enable accessibility access",
-                    detail: "This lets Orbit Dictation trigger shortcuts globally and paste text back into the active app.",
+                    detail: "This lets Orbit Dictation trigger shortcuts globally and paste text back into the active app. After granting in System Settings, use the Recheck button on the General tab if this row still says incomplete.",
                     isComplete: appState.hotkeyManager.isAccessibilityGranted,
                     actionTitle: appState.hotkeyManager.isAccessibilityGranted ? nil : "Open",
                     action: appState.hotkeyManager.isAccessibilityGranted ? nil : { appState.requestAccessibilityAccess() }

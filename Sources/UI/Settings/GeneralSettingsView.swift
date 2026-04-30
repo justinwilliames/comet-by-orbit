@@ -67,7 +67,7 @@ struct GeneralSettingsView: View {
             icon: "lock.shield"
         ) {
             VStack(alignment: .leading, spacing: 14) {
-                DetailRow("Accessibility", detail: "Required for global shortcuts and pasting dictated text.") {
+                DetailRow("Accessibility", detail: "Required for global shortcuts and pasting dictated text. Click Recheck after granting in System Settings if the badge still says Missing.") {
                     HStack(spacing: 8) {
                         PreferenceBadge(
                             title: appState.hotkeyManager.isAccessibilityGranted ? "Granted" : "Missing",
@@ -87,6 +87,16 @@ struct GeneralSettingsView: View {
                             .buttonStyle(.borderedProminent)
                             .controlSize(.small)
                         }
+
+                        Button {
+                            appState.refreshPermissionSnapshot()
+                        } label: {
+                            Label("Recheck", systemImage: "arrow.clockwise")
+                                .labelStyle(.titleAndIcon)
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .help("Force a fresh AXIsProcessTrusted() check")
                     }
                 }
 
@@ -110,6 +120,16 @@ struct GeneralSettingsView: View {
                             .buttonStyle(.borderedProminent)
                             .controlSize(.small)
                         }
+
+                        Button {
+                            appState.refreshPermissionSnapshot()
+                        } label: {
+                            Label("Recheck", systemImage: "arrow.clockwise")
+                                .labelStyle(.titleAndIcon)
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .help("Re-read the system permission state")
                     }
                 }
 
