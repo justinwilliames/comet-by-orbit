@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.2.18] — 2026-05-01
+
+### Fixed
+
+* **Fillers are now actually removed.** Sir reported that after switching to Anthropic Haiku 4.5, fillers ("um", "uh", "you know") were being preserved instead of stripped. Audit found three structural issues in the prompt: (1) zero concrete examples demonstrated filler removal — the rule was stated but unanchored, so smaller models had no positive pattern to follow; (2) the CLEANUP rule said *"Remove fillers… unless intentional"* — the hedge gave the model an out it shouldn't have; (3) the NEVER bullet led with *"Compress, abbreviate, or summarise. Keep every content word"* and only mentioned the filler carve-out mid-paragraph, so the dominant signal Haiku picked up was preservation. Three changes: (a) added two filler-removal examples to the EXAMPLES section, (b) replaced the "unless intentional" hedge with explicit "required, not optional" framing in CLEANUP, (c) restructured the NEVER bullet to lead with the filler carve-out before the broad prohibition. Same fixes applied to the simplified prompt used on the Groq 8B fallback.
+
 ## [0.2.17] — 2026-05-01
 
 ### Changed
