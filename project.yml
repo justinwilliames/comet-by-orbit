@@ -56,6 +56,16 @@ targets:
         NSSupportsAutomaticTermination: true
         SUFeedURL: https://github.com/justinwilliames-sketch/orbit-dictation/releases/latest/download/appcast.xml
         SUPublicEDKey: 4HZt8Wm9W7FCkufc4a8CneXFmCd9v3UM3dIa6ob2xXE=
+        # Auto-check on by default — without this, Sparkle pops a
+        # "check automatically?" prompt on first launch and a user
+        # can accidentally opt out and never see another update.
+        SUEnableAutomaticChecks: true
+        # 30 min, mirroring Orion. Default is 86400 (24h), which during
+        # active iteration leaves Sparkle perpetually one release behind:
+        # Sir accepts a v0.X prompt, by then v0.X+1 has shipped, Sparkle
+        # doesn't notice for another 24h. 1800s closes the gap without
+        # being noisy.
+        SUScheduledCheckInterval: 1800
         # URL scheme so AppDelegate can open the SwiftUI Settings scene via
         # `NSWorkspace.shared.open(comet://settings)` without needing the
         # SwiftUI `openWindow` environment action (which AppKit can't reach).

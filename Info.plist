@@ -53,5 +53,9 @@
 	<string>https://github.com/justinwilliames-sketch/orbit-dictation/releases/latest/download/appcast.xml</string>
 	<key>SUPublicEDKey</key>
 	<string>4HZt8Wm9W7FCkufc4a8CneXFmCd9v3UM3dIa6ob2xXE=</string>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
+	<key>SUScheduledCheckInterval</key>
+	<integer>1800</integer>
 </dict>
 </plist>

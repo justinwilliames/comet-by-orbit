@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.2.10] — 2026-05-01
+
+### Changed
+
+* **Sparkle auto-update is now ON by default.** Added `SUEnableAutomaticChecks = true` and `SUScheduledCheckInterval = 1800` (30 min) to Info.plist, mirroring Orion. Without these, Sparkle pops a "check for updates automatically?" prompt on first launch and a user can accidentally opt out and never see another update; the 24h default also leaves Sparkle perpetually one release behind during active iteration. The user-driven "Check for Updates…" entry in the popover footer and the post-update Gatekeeper xattr dialog were already in place — this change just makes the auto-prompt path reliable.
+
 ## [0.2.9] — 2026-05-01
 
 ### Fixed
