@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.2.16] — 2026-05-01
+
+### Changed
+
+* **Groq 8B fallback now uses a simplified prompt.** When the Groq 70B model rate-limits and the pipeline falls back to `llama-3.1-8b-instant`, the system prompt is swapped from the full ~1,400-token cleanup contract to a tight ~250-token version (`Prompts.simplifiedCleanup`) with three few-shot examples and structured `<output>` tags. Small models can't reliably hold the full prompt's rule set in attention — they pattern-match conversation cues, refuse, wrap output in framing, or drop content. The simplified prompt anchors them on the transformation task. Sir's custom prompt + tone-of-voice overrides are not applied on the 8B path; the v0.2.15 compression and framing guardrails catch any remaining failures.
+
 ## [0.2.15] — 2026-05-01
 
 ### Fixed

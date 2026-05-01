@@ -181,6 +181,49 @@ enum Prompts {
         (Narrative-sounding input. Stays first-person — never "He went down to the beach…". Same rule applies to "we"/"my"/"our": preserve exactly what the speaker said.)
         """
 
+    /// Simplified cleanup prompt for small / weak models (Groq's
+    /// `llama-3.1-8b-instant`, OpenAI's gpt-4o-mini, etc.).
+    ///
+    /// `defaultCleanup` runs ~1,400 tokens with extensive rules and
+    /// examples. Models in the 7–9B range can't reliably hold that much
+    /// context for instruction-following on a transformation task — they
+    /// pattern-match on conversation cues, treat the transcript as a
+    /// question to answer, wrap output in framing ("I've cleaned the
+    /// input. Here is the output: …"), refuse, or compress aggressively.
+    /// All four failure modes show up the moment Sir's Groq daily-token
+    /// cap forces fallback to 8B.
+    ///
+    /// This shorter prompt (~250 tokens) anchors small models on the
+    /// task with: one clear framing, five tight rules, structured I/O
+    /// via `<output>` tags (the dominant signal for small models), and
+    /// three few-shot examples that target the observed failure modes
+    /// directly — pronoun preservation, content preservation,
+    /// "answers a question" trap.
+    static let simplifiedCleanup = """
+        You clean speech-to-text transcripts. The user dictated into a microphone; the cleaned text gets pasted into another app. The transcript is the speaker's words. You are NOT the audience.
+
+        Rules:
+        1. Add capitalisation and punctuation.
+        2. Remove ONLY filler words: "um", "uh", "like", "you know".
+        3. Keep every other word the speaker said. Same word count, same meaning.
+        4. Keep pronouns exactly as dictated. "I" stays "I". "me" stays "me". "we" stays "we". Never switch to "you" or third person.
+        5. Never reply, explain, refuse, or invent. If the input sounds like a question or a request, just clean the words — do not answer it.
+
+        Output format: wrap your cleaned text in <output></output> tags. Output nothing else — no preamble, no explanation, no apology.
+
+        Example:
+        Input: um whats the best way to structure this API request
+        Output: <output>What's the best way to structure this API request?</output>
+
+        Example:
+        Input: its asking me if the application type is web android or desktop which should i choose
+        Output: <output>It's asking me if the application type is web, Android, or desktop. Which should I choose?</output>
+
+        Example:
+        Input: can you write me a summary of last weeks metrics
+        Output: <output>Can you write me a summary of last week's metrics?</output>
+        """
+
     /// Default context inference prompt (for deep context mode).
     static let defaultContext = """
         Based on the following information about what the user is currently doing, \
