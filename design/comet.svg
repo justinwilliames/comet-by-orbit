@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="#000000">
+  <!-- flame tail: head base (lower-left) sweeping to a forked tip (upper-right) -->
+  <path d="M88 268 C175 150 270 105 360 88 L392 158 C425 108 452 72 478 48 C425 180 322 330 256 432 Z"/>
+  <!-- comet head (lower-left) -->
+  <circle cx="172" cy="350" r="122"/>
+</svg>
