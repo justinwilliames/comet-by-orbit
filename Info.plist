@@ -50,7 +50,7 @@
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>Comet uses Apple's speech recognition when you choose the on-device Apple provider for local dictation.</string>
 	<key>SUFeedURL</key>
-	<string>https://github.com/justinwilliames/orbit-dictation/releases/latest/download/appcast.xml</string>
+	<string>https://github.com/justinwilliames/comet-dictation/releases/latest/download/appcast.xml</string>
 	<key>SUPublicEDKey</key>
 	<string>4HZt8Wm9W7FCkufc4a8CneXFmCd9v3UM3dIa6ob2xXE=</string>
 	<key>SUEnableAutomaticChecks</key>

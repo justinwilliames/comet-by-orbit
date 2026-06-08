@@ -261,9 +261,9 @@ jobs:
           prerelease: true
           make_latest: "false"
           body: |
-            **Comet — menu-bar voice dictation for macOS, part of [Orbit](https://get.yourorbit.team).** Rolling latest dev build, refreshed on every push to `main`. For tagged stable releases see the [Releases list](https://github.com/justinwilliames/orbit-dictation/releases).
+            **Comet — menu-bar voice dictation for macOS, part of [Orbit](https://get.yourorbit.team).** Rolling latest dev build, refreshed on every push to `main`. For tagged stable releases see the [Releases list](https://github.com/justinwilliames/comet-dictation/releases).
 
-            Built from commit [`${{ github.sha }}`](https://github.com/justinwilliames/orbit-dictation/commit/${{ github.sha }}).
+            Built from commit [`${{ github.sha }}`](https://github.com/justinwilliames/comet-dictation/commit/${{ github.sha }}).
 
             > [!IMPORTANT]
             > **You MUST run a Terminal command before this app will open.**
