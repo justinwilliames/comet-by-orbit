@@ -4,6 +4,7 @@ import SwiftUI
 struct AboutView: View {
     private let repositoryURL = URL(string: "https://github.com/justinwilliames/comet-dictation")!
     private let upstreamURL = URL(string: "https://github.com/sophiie-ai/whispur")!
+    private let orbitURL = URL(string: "https://yourorbit.team")!
 
     var body: some View {
         VStack(spacing: 18) {
@@ -15,8 +16,12 @@ struct AboutView: View {
                 .shadow(color: .black.opacity(0.12), radius: 10, y: 6)
 
             VStack(spacing: 6) {
-                Text("Comet")
+                Text("Comet Dictation")
                     .font(.title2.weight(.semibold))
+
+                Text("by Orbit AI")
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.secondary)
 
                 Text("Menu-bar voice dictation for macOS")
                     .font(.subheadline)
@@ -38,6 +43,17 @@ struct AboutView: View {
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
+
+                HStack(spacing: 6) {
+                    Image("OrbitLogo")
+                        .resizable()
+                        .interpolation(.high)
+                        .scaledToFit()
+                        .frame(width: 14, height: 14)
+                        .foregroundStyle(.secondary)
+                    Link("yourorbit.team", destination: orbitURL)
+                        .font(.callout)
+                }
 
                 HStack(spacing: 4) {
                     Text("Powered by")

@@ -59,7 +59,7 @@ struct MenuBarView: View {
             ZStack {
                 RoundedRectangle(cornerRadius: 9, style: .continuous)
                     .fill(Color.orbit)
-                Image("OrbitLogo")
+                Image("CometMark")
                     .resizable()
                     .interpolation(.high)
                     .scaledToFit()
@@ -68,7 +68,7 @@ struct MenuBarView: View {
             .frame(width: 34, height: 34)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text("Comet")
+                Text("Comet Dictation")
                     .font(.title3.weight(.semibold))
 
                 Text(appState.pipeline.statusTitle)
@@ -252,29 +252,53 @@ struct MenuBarView: View {
     }
 
     private var footerButtons: some View {
-        HStack {
-            Button("About") {
-                openAbout()
-            }
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Button("About") {
+                    openAbout()
+                }
 
-            Button("Settings") {
-                openSettings(tab: .general)
-            }
-            .keyboardShortcut(",", modifiers: .command)
+                Button("Settings") {
+                    openSettings(tab: .general)
+                }
+                .keyboardShortcut(",", modifiers: .command)
 
-            Button("Check for Updates…") {
-                appState.sparkleUpdater.checkForUpdates()
-            }
-            .disabled(!appState.sparkleUpdater.canCheckForUpdates)
+                Button("Check for Updates…") {
+                    appState.sparkleUpdater.checkForUpdates()
+                }
+                .disabled(!appState.sparkleUpdater.canCheckForUpdates)
 
-            Spacer()
+                Spacer()
 
-            Button("Quit") {
-                NSApp.terminate(nil)
+                Button("Quit") {
+                    NSApp.terminate(nil)
+                }
+                .keyboardShortcut("q", modifiers: .command)
             }
-            .keyboardShortcut("q", modifiers: .command)
+            .font(.caption)
+
+            orbitFooter
         }
-        .font(.caption)
+    }
+
+    // "by Orbit AI · yourorbit.team" — the Orbit company mark + link, marking
+    // Comet Dictation as an Orbit product.
+    private var orbitFooter: some View {
+        HStack(spacing: 5) {
+            Image("OrbitLogo")
+                .resizable()
+                .interpolation(.high)
+                .scaledToFit()
+                .frame(width: 12, height: 12)
+                .foregroundStyle(.secondary)
+            Text("by Orbit AI")
+                .foregroundStyle(.secondary)
+            Text("·")
+                .foregroundStyle(.tertiary)
+            Link("yourorbit.team", destination: URL(string: "https://yourorbit.team")!)
+            Spacer()
+        }
+        .font(.caption2)
     }
 
     private func providerRow(

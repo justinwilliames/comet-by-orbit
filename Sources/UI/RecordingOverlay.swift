@@ -83,9 +83,9 @@ struct RecordingOverlay: View {
         let silence = pipeline.isHearingSilence
         let isHold = pipeline.activeTriggerMode == .hold
         return HStack(spacing: 12) {
-            // Orbit logo as the prominent leading element. Pulse-scales with
-            // the live audio level so the Orbit identity reads as "actively
-            // listening". Silence dims the logo to 0.45 opacity and overlays
+            // Comet mark as the prominent leading element. Pulse-scales with
+            // the live audio level so the brand reads as "actively
+            // listening". Silence dims the mark to 0.45 opacity and overlays
             // a small amber dot at the bottom-right so the user can tell at
             // a glance whether we're picking up audio.
             ZStack(alignment: .bottomTrailing) {
@@ -96,7 +96,7 @@ struct RecordingOverlay: View {
                         .scaleEffect(pipeline.audioLevel > 0.04 ? 1.10 : 0.95)
                         .animation(.easeInOut(duration: 0.14), value: pipeline.audioLevel)
 
-                    Image("OrbitLogo")
+                    Image("CometMark")
                         .resizable()
                         .interpolation(.high)
                         .scaledToFit()

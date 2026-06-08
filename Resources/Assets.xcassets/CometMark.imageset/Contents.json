@@ -1,17 +1,17 @@
 {
   "images": [
     {
-      "filename": "OrbitLogo.png",
+      "filename": "CometMark.png",
       "idiom": "universal",
       "scale": "1x"
     },
     {
-      "filename": "OrbitLogo@2x.png",
+      "filename": "CometMark@2x.png",
       "idiom": "universal",
       "scale": "2x"
     },
     {
-      "filename": "OrbitLogo@3x.png",
+      "filename": "CometMark@3x.png",
       "idiom": "universal",
       "scale": "3x"
     }
@@ -19,8 +19,5 @@
   "info": {
     "author": "xcode",
     "version": 1
-  },
-  "properties": {
-    "template-rendering-intent": "template"
   }
 }
