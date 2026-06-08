@@ -32,7 +32,7 @@ Pushing to `main` without a tag publishes a rolling `latest` prerelease.
 | Item | Location | Purpose |
 |---|---|---|
 | Public key | `Sources/Resources/Info.plist` → `SUPublicEDKey` | Baked into every shipped `.app`. **Do not change** unless rotating (see below). |
-| Private key | GitHub Actions secret `SPARKLE_ED_PRIVATE_KEY` on `justinwilliames/orbit-dictation` | Signs the `.dmg` in CI. Cannot be read back once set. |
+| Private key | GitHub Actions secret `SPARKLE_ED_PRIVATE_KEY` on `justinwilliames/comet-dictation` | Signs the `.dmg` in CI. Cannot be read back once set. |
 | Local Keychain copy | macOS Keychain, account `orbit-dictation` (per memory rule) | Local development copy. Treat as authoritative second source. |
 | Offline backup | **Required** — see DR section below. | If the GH secret AND Keychain are both lost, this is the only path back. |
 

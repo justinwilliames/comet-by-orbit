@@ -4,7 +4,7 @@ Comet is a macOS menu-bar dictation app for the Orbit ecosystem. Hold a shortcut
 
 Powered by [Whispur](https://github.com/sophiie-ai/whispur). Comet is an Orbit-branded fork that ships with a stricter cleanup prompt and the Orbit identity, while keeping internal modules aligned with Whispur for clean upstream merges.
 
-> [get.yourorbit.team/orbit-dictation](https://get.yourorbit.team/orbit-dictation) · Download from the Orbit Downloads page
+> [get.yourorbit.team/comet](https://get.yourorbit.team/comet) · Download from the Orbit Downloads page
 
 ## Features
 
@@ -41,7 +41,7 @@ Comet is currently distributed unsigned (an Apple Developer ID is on the way). T
 
 ### 1. Download
 
-Grab the latest `.dmg` from [Releases](https://github.com/justinwilliames/comet-dictation/releases/latest) or from the [Orbit Downloads page](https://get.yourorbit.team/orbit-dictation).
+Grab the latest `.dmg` from [Releases](https://github.com/justinwilliames/comet-dictation/releases/latest) or from the [Orbit Downloads page](https://get.yourorbit.team/comet).
 
 ### 2. Drag to Applications
 
@@ -148,7 +148,7 @@ Comet is an MIT-licensed fork of [Whispur](https://github.com/sophiie-ai/whispur
 **Brand & distribution**
 - Orbit identity (logo, indigo palette `#6366F1`, mic SF Symbol menu-bar icon).
 - Bundle identifier: `team.yourorbit.OrbitDictation` (Whispur is `ai.sophiie.whispur`); Application Support and Keychain service rescoped to match.
-- Distributed from `get.yourorbit.team/orbit-dictation` and this repo's GitHub Releases. Currently ad-hoc signed (proper Developer ID signing pending).
+- Distributed from `get.yourorbit.team/comet` and this repo's GitHub Releases. Currently ad-hoc signed (proper Developer ID signing pending).
 
 **Internal symbols stay Whispur-named** — `WhispurApp`, `HotkeyManager`, etc. — so `git fetch upstream` merges cleanly. Only user-visible strings, the bundle identifier, the Sparkle update channel, and the default cleanup prompt are Orbit-specific.
 
