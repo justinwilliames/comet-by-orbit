@@ -121,7 +121,7 @@ By default everything runs locally on Apple's on-device speech recognition, no A
 
 ```bash
 git clone https://github.com/justinwilliames/comet-by-orbit.git
-cd comet-dictation
+cd comet-by-orbit
 brew install xcodegen
 make all
 make run

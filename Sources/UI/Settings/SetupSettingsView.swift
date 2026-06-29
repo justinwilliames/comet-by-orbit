@@ -288,11 +288,11 @@ struct SetupSettingsView: View {
                 }
 
                 HStack(spacing: 12) {
-                    Link(destination: URL(string: "https://github.com/justinwilliames/comet-dictation/issues")!) {
+                    Link(destination: URL(string: "https://github.com/justinwilliames/comet-by-orbit/issues")!) {
                         Label("Report an issue", systemImage: "exclamationmark.bubble")
                             .font(.caption)
                     }
-                    Link(destination: URL(string: "https://github.com/justinwilliames/comet-dictation")!) {
+                    Link(destination: URL(string: "https://github.com/justinwilliames/comet-by-orbit")!) {
                         Label("View source", systemImage: "chevron.left.forwardslash.chevron.right")
                             .font(.caption)
                     }

@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 struct AboutView: View {
-    private let repositoryURL = URL(string: "https://github.com/justinwilliames/comet-dictation")!
+    private let repositoryURL = URL(string: "https://github.com/justinwilliames/comet-by-orbit")!
     private let upstreamURL = URL(string: "https://github.com/sophiie-ai/whispur")!
     private let orbitURL = URL(string: "https://yourorbit.team")!
 

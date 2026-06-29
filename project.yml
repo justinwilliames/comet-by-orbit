@@ -54,7 +54,7 @@ targets:
         NSHumanReadableCopyright: "© 2026 Justin Williames. Built on Whispur (MIT)."
         NSPrincipalClass: NSApplication
         NSSupportsAutomaticTermination: true
-        SUFeedURL: https://github.com/justinwilliames/comet-dictation/releases/latest/download/appcast.xml
+        SUFeedURL: https://github.com/justinwilliames/comet-by-orbit/releases/latest/download/appcast.xml
         SUPublicEDKey: 4HZt8Wm9W7FCkufc4a8CneXFmCd9v3UM3dIa6ob2xXE=
         # Auto-check on by default — without this, Sparkle pops a
         # "check automatically?" prompt on first launch and a user
