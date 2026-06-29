@@ -41,7 +41,7 @@ Comet is currently distributed unsigned (an Apple Developer ID is on the way). T
 
 ### 1. Download
 
-Grab the latest `.dmg` from [Releases](https://github.com/justinwilliames/comet-dictation/releases/latest) or from the [Orbit Downloads page](https://get.yourorbit.team/comet).
+Grab the latest `.dmg` from [Releases](https://github.com/justinwilliames/comet-by-orbit/releases/latest) or from the [Orbit Downloads page](https://get.yourorbit.team/comet).
 
 ### 2. Drag to Applications
 
@@ -120,7 +120,7 @@ By default everything runs locally on Apple's on-device speech recognition, no A
 ## Build from source
 
 ```bash
-git clone https://github.com/justinwilliames/comet-dictation.git
+git clone https://github.com/justinwilliames/comet-by-orbit.git
 cd comet-dictation
 brew install xcodegen
 make all
