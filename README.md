@@ -2,7 +2,7 @@
 
 Comet is a macOS menu-bar dictation app for the Orbit ecosystem. Hold a shortcut, speak, and the cleaned text drops into the app you are already using.
 
-Powered by [Whispur](https://github.com/sophiie-ai/whispur). Comet is an Orbit-branded fork that ships with a stricter cleanup prompt and the Orbit identity, while keeping internal modules aligned with Whispur for clean upstream merges.
+Forked from [Whispur](https://github.com/sophiie-ai/whispur). Comet is an Orbit-branded fork that ships with a stricter cleanup prompt and the Orbit identity, while keeping internal modules aligned with Whispur for clean upstream merges.
 
 > [get.yourorbit.team/comet](https://get.yourorbit.team/comet) · Download from the Orbit Downloads page
 

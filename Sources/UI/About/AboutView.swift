@@ -56,7 +56,7 @@ struct AboutView: View {
                 }
 
                 HStack(spacing: 4) {
-                    Text("Powered by")
+                    Text("Forked from")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Link("Whispur", destination: upstreamURL)
