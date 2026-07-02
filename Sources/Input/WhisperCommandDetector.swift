@@ -54,6 +54,8 @@ final class WhisperCommandDetector {
     private var trailingSilence: Double = 0
 
     private var lastFire: [String: Date] = [:] // main-thread only
+    private var recentSnippets: [(date: Date, text: String)] = [] // main-thread only
+    private let contextWindow: TimeInterval = 4.0
 
     // MARK: - Control
 
@@ -209,6 +211,7 @@ final class WhisperCommandDetector {
             try? FileManager.default.removeItem(at: url)
             return
         }
+        logger.info("Utterance captured (\(Int(duration * 1000), privacy: .public) ms) → transcribing")
         Task { await self.transcribeAndMatch(url: url, mode: currentMode) }
     }
 
@@ -239,21 +242,34 @@ final class WhisperCommandDetector {
 
     private func match(_ transcript: String, mode: Mode) {
         guard isActive else { return }
-        let phrase = transcript.lowercased()
+        let snippet = transcript.lowercased()
             .components(separatedBy: CharacterSet.alphanumerics.inverted)
             .filter { !$0.isEmpty }
             .joined(separator: " ")
-        guard !phrase.isEmpty else { return }
+        logger.info("Snippet heard: “\(transcript, privacy: .public)” → normalized “\(snippet, privacy: .public)”")
+        guard !snippet.isEmpty else { return }
+
+        // Keep a short rolling context so a natural pause between the keyword
+        // and the action ("Comet… copy") still matches as "comet copy".
+        let now = Date()
+        recentSnippets.append((now, snippet))
+        recentSnippets.removeAll { now.timeIntervalSince($0.date) > contextWindow }
+        let phrase = recentSnippets.map(\.text).joined(separator: " ")
 
         switch mode {
         case .recording:
-            if Self.contains(phrase, VoiceCommands.stopPhrases) { fire(.stop, key: "stop") }
+            if Self.contains(phrase, VoiceCommands.stopPhrases) {
+                recentSnippets.removeAll()
+                fire(.stop, key: "stop")
+            }
         case .idle:
             if Self.contains(phrase, VoiceCommands.startPhrases) {
+                recentSnippets.removeAll()
                 fire(.start, key: "start")
                 return
             }
             for command in VoiceCommands.keystroke where Self.contains(phrase, command.phrases) {
+                recentSnippets.removeAll()
                 fire(.keystroke(command), key: command.id)
                 return
             }
