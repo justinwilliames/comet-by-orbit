@@ -368,7 +368,13 @@ final class AppState: ObservableObject {
     /// Falls back to Apple on-device only if that's what the user has selected.
     private func transcribeCommandSnippet(_ url: URL) async throws -> String {
         guard let provider = registry.makeSTTProvider(for: selectedSTT) else { return "" }
-        return try await provider.transcribe(fileURL: url, language: sttLanguageSelection, vocabulary: [])
+        // Bias the recognizer toward the command vocabulary (helps accents /
+        // dropped consonants like the Australian "start" → "star").
+        return try await provider.transcribe(
+            fileURL: url,
+            language: sttLanguageSelection,
+            vocabulary: VoiceCommands.biasVocabulary
+        )
     }
 
     /// Menu-bar entry point: flip the armed listening window on/off.

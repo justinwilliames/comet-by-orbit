@@ -53,7 +53,15 @@ enum VoiceCommands {
     /// dictation", "Comet stop dictation", "Comet new line". Ordinary speech
     /// never starts with it, so nothing fires by accident. Includes common
     /// mishears of "comet".
-    static let keywords = ["comet", "komet", "comment", "comments", "commit"]
+    static let keywords = ["comet", "comets", "komet", "comment", "comments", "commit"]
+
+    /// Words fed to the transcriber as a bias hint, so it expects the command
+    /// vocabulary — improves recognition of dropped/soft consonants (accents).
+    static let biasVocabulary = [
+        "Comet", "start dictation", "stop dictation", "new line", "select all",
+        "copy", "paste", "undo", "redo", "tab", "escape", "send", "return",
+        "press enter", "delete word", "delete line",
+    ]
 
     /// Actions (keyword-less) that START recording, e.g. "Comet start".
     /// Includes "star" — the recognizer commonly drops the 't' in "start".
