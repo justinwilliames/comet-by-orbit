@@ -53,10 +53,14 @@ enum VoiceCommands {
     /// dictation", "Comet stop dictation", "Comet new line". Ordinary speech
     /// never starts with it, so nothing fires by accident. Includes common
     /// mishears of "comet".
-    static let keywords = ["comet", "komet", "comment", "commit"]
+    static let keywords = ["comet", "komet", "comment", "comments", "commit"]
 
     /// Actions (keyword-less) that START recording, e.g. "Comet start".
-    static let startActions = ["start", "start dictation", "start recording", "begin", "begin dictation", "go"]
+    /// Includes "star" — the recognizer commonly drops the 't' in "start".
+    static let startActions = [
+        "start", "start dictation", "start recording", "starting",
+        "star", "star dictation", "begin", "begin dictation", "go",
+    ]
     /// Actions that STOP recording, e.g. "Comet stop".
     static let stopActions = ["stop", "stop dictation", "stop recording", "end", "end dictation", "finish"]
 

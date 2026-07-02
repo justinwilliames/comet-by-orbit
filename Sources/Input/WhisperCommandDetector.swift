@@ -34,10 +34,13 @@ final class WhisperCommandDetector {
     var transcribe: ((URL) async throws -> String)?
 
     // Tuning.
-    private let speechThreshold: Float = 0.012   // RMS above this = speech
-    private let endSilenceSeconds: Double = 0.7  // pause that ends an utterance
-    private let maxUtteranceSeconds: Double = 6.0
-    private let minUtteranceSeconds: Double = 0.25
+    // Capture a FIXED window from speech onset rather than segmenting on
+    // silence — quiet mics dip below any threshold mid-phrase, which was
+    // chopping commands into unrecognizable fragments. A fixed window keeps the
+    // whole "Comet start dictation" together for the transcriber.
+    private let onsetThreshold: Float = 0.013   // RMS onset that starts a capture
+    private let captureSeconds: Double = 2.5     // fixed capture length
+    private let minUtteranceSeconds: Double = 0.4
     private let debounce: TimeInterval = 2.0
 
     private let queue = DispatchQueue(label: "team.yourorbit.OrbitDictation.whisper-cmd", qos: .userInitiated)
@@ -50,8 +53,8 @@ final class WhisperCommandDetector {
     private var utteranceURL: URL?
     private var utteranceFormat: AVAudioFormat?
     private var utteranceFrames: AVAudioFramePosition = 0
-    private var hadSpeech = false
-    private var trailingSilence: Double = 0
+    private var capturing = false
+    private var captureTargetFrames: AVAudioFramePosition = 0
     private var bufferCount = 0        // queue-confined, for level logging
     private var peakRMS: Float = 0     // queue-confined
 
@@ -134,37 +137,30 @@ final class WhisperCommandDetector {
     private func handle(_ buffer: AVAudioPCMBuffer) {
         guard isActive else { return }
         let rms = Self.rms(buffer)
-        let sampleRate = buffer.format.sampleRate
-        let bufferDuration = sampleRate > 0 ? Double(buffer.frameLength) / sampleRate : 0
 
-        // Level diagnostics: log the peak RMS roughly once a second so we can
-        // see whether audio is arriving and tune the speech threshold.
+        // Level diagnostics: log the peak RMS ~once a second to tune the onset.
         bufferCount += 1
         peakRMS = max(peakRMS, rms)
         if bufferCount >= 48 {
-            logger.info("audio level: peakRMS=\(String(format: "%.4f", self.peakRMS), privacy: .public) (threshold \(String(format: "%.4f", self.speechThreshold), privacy: .public))")
+            logger.info("audio level: peakRMS=\(String(format: "%.4f", self.peakRMS), privacy: .public) (onset \(String(format: "%.4f", self.onsetThreshold), privacy: .public))")
             bufferCount = 0
             peakRMS = 0
         }
 
-        if rms >= speechThreshold {
-            if utteranceFile == nil { openUtterance(format: buffer.format) }
-            hadSpeech = true
-            trailingSilence = 0
+        if capturing {
             writeUtterance(buffer)
-        } else if utteranceFile != nil {
-            // Inside an utterance — keep a little trailing silence, then end it.
-            writeUtterance(buffer)
-            trailingSilence += bufferDuration
-            if hadSpeech, trailingSilence >= endSilenceSeconds {
+            if captureTargetFrames > 0, utteranceFrames >= captureTargetFrames {
                 finalizeUtterance()
-                return
             }
-        }
-
-        if let format = utteranceFormat, format.sampleRate > 0,
-           Double(utteranceFrames) / format.sampleRate >= maxUtteranceSeconds {
-            finalizeUtterance()
+        } else if rms >= onsetThreshold {
+            // Speech onset — capture a fixed window so the whole command stays
+            // together even when the level dips between words.
+            openUtterance(format: buffer.format)
+            if utteranceFile != nil {
+                capturing = true
+                captureTargetFrames = AVAudioFramePosition(captureSeconds * buffer.format.sampleRate)
+                writeUtterance(buffer)
+            }
         }
     }
 
@@ -176,8 +172,6 @@ final class WhisperCommandDetector {
             utteranceURL = url
             utteranceFormat = format
             utteranceFrames = 0
-            hadSpeech = false
-            trailingSilence = 0
         } catch {
             logger.error("Failed to open utterance file: \(error.localizedDescription, privacy: .public)")
             utteranceFile = nil
@@ -199,8 +193,8 @@ final class WhisperCommandDetector {
         utteranceURL = nil
         utteranceFormat = nil
         utteranceFrames = 0
-        hadSpeech = false
-        trailingSilence = 0
+        capturing = false
+        captureTargetFrames = 0
     }
 
     private func discardUtterance() {
@@ -214,12 +208,11 @@ final class WhisperCommandDetector {
             return
         }
         let duration = format.sampleRate > 0 ? Double(utteranceFrames) / format.sampleRate : 0
-        let hadSpeech = self.hadSpeech
         let currentMode = mode
         utteranceFile = nil // flush/close
         resetUtterance()
 
-        guard hadSpeech, duration >= minUtteranceSeconds else {
+        guard duration >= minUtteranceSeconds else {
             try? FileManager.default.removeItem(at: url)
             return
         }
