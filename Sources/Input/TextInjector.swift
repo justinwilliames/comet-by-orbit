@@ -281,21 +281,23 @@ enum TextInjector {
         logger.warning("Key release wait timed out after 500ms")
     }
 
-    /// Injects a Return/Enter keypress into the focused app — e.g. to send a
-    /// dictated chat message after pasting it. Waits for any held modifier
-    /// keys to clear first (same as paste) so a lingering Cmd/Fn doesn't turn
-    /// it into a different shortcut.
-    static func pressReturn() async {
+    /// Injects an arbitrary keystroke (with optional modifiers) into the
+    /// focused app — powers the armed voice commands (Return, ⌘A, ⌘Z, …).
+    /// Waits for any held modifier keys to clear first (same as paste) so a
+    /// lingering Cmd/Fn doesn't corrupt the intended combination.
+    static func pressKey(_ keyCode: CGKeyCode, flags: CGEventFlags = []) async {
         await waitForKeyRelease()
         guard !Task.isCancelled else { return }
 
         let source = CGEventSource(stateID: .hidSystemState)
-        let keyDown = CGEvent(keyboardEventSource: source, virtualKey: 0x24, keyDown: true) // Return
+        let keyDown = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: true)
+        keyDown?.flags = flags
         keyDown?.post(tap: .cgSessionEventTap)
-        let keyUp = CGEvent(keyboardEventSource: source, virtualKey: 0x24, keyDown: false)
+        let keyUp = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: false)
+        keyUp?.flags = flags
         keyUp?.post(tap: .cgSessionEventTap)
 
-        logger.debug("Simulated Return keypress")
+        logger.debug("Simulated key \(keyCode) flags \(flags.rawValue)")
     }
 
     private static func simulatePaste() {

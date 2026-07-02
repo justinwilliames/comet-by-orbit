@@ -27,14 +27,6 @@ enum WakePhrases {
     static let start: [String] = phrases(from: startVerbs)
     /// Normalized phrases that STOP recording.
     static let stop: [String] = phrases(from: stopVerbs)
-    /// Phrases that inject a Return keypress into the focused app — recognized
-    /// while armed and idle (e.g. to send a just-pasted message). Two-word
-    /// phrases only, so a stray "send"/"return" doesn't fire a Return into
-    /// whatever's focused.
-    static let returnKey = [
-        "press return", "press enter", "hit return", "hit enter",
-        "new line", "send message", "send dictation",
-    ]
 
     private static func phrases(from verbs: [String]) -> [String] {
         verbs.flatMap { verb in nouns.map { "\(verb) \($0)" } }
@@ -53,11 +45,16 @@ enum WakePhrases {
 ///
 /// Callbacks are always delivered on the main queue.
 final class WakeWordListener {
-    enum Command { case start, end, pressReturn }
+    /// What a recognized phrase maps to.
+    enum WakeAction {
+        case start
+        case stop
+        case keystroke(VoiceCommand)
+    }
     enum Mode { case awaitingStart, awaitingEnd }
 
     /// Delivered on the main queue when a command phrase is detected.
-    var onCommand: ((Command) -> Void)?
+    var onCommand: ((WakeAction) -> Void)?
     /// Delivered on the main queue if listening can't start.
     var onUnavailable: ((String) -> Void)?
 
@@ -281,12 +278,18 @@ final class WakeWordListener {
         let tail = words.suffix(5).joined(separator: " ")
         switch mode {
         case .awaitingStart:
-            // Idle: either start dictation, or press Return in the focused app.
-            if Self.matches(tail, WakePhrases.start) { fire(.start) }
-            else if Self.matches(tail, WakePhrases.returnKey) { fire(.pressReturn) }
+            // Idle: start dictation, or run one of the armed keystroke commands.
+            if Self.matches(tail, WakePhrases.start) {
+                fire(.start, key: "start")
+                return
+            }
+            for command in VoiceCommands.keystroke where Self.matches(tail, command.phrases) {
+                fire(.keystroke(command), key: command.id)
+                return
+            }
         case .awaitingEnd:
             // Recording: only the stop phrase is meaningful.
-            if Self.matches(tail, WakePhrases.stop) { fire(.end) }
+            if Self.matches(tail, WakePhrases.stop) { fire(.stop, key: "stop") }
         }
     }
 
@@ -294,8 +297,7 @@ final class WakeWordListener {
         targets.contains { tail.contains($0) }
     }
 
-    private func fire(_ command: Command) {
-        let key = String(describing: command)
+    private func fire(_ action: WakeAction, key: String) {
         let now = Date()
         lock.lock()
         let last = lastFireTimes[key] ?? .distantPast
@@ -305,7 +307,7 @@ final class WakeWordListener {
         guard allowed else { return }
 
         logger.info("Wake command detected: \(key, privacy: .public)")
-        DispatchQueue.main.async { [weak self] in self?.onCommand?(command) }
+        DispatchQueue.main.async { [weak self] in self?.onCommand?(action) }
     }
 
     private func emitUnavailable(_ message: String) {

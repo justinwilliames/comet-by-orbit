@@ -398,10 +398,10 @@ final class AppState: ObservableObject {
         if !enabled { disarmWakeWord() }
     }
 
-    private func handleWakeCommand(_ command: WakeWordListener.Command) {
+    private func handleWakeCommand(_ action: WakeWordListener.WakeAction) {
         guard wakeArmed, wakeWordEnabled else { return }
 
-        switch command {
+        switch action {
         case .start:
             // Ignore a start that lands while we're already recording/busy.
             guard pipeline.canStartRecording else { return }
@@ -421,18 +421,20 @@ final class AppState: ObservableObject {
             startDictation(triggerMode: .toggle)
             scheduleWakeMaxDuration()
 
-        case .end:
+        case .stop:
             guard wakeInitiatedSession, pipeline.canStopRecording else { return }
             stopDictation()
             // Buffer tee + listener restart happen when the pipeline returns to
             // idle (see observePipeline).
 
-        case .pressReturn:
-            // Only when idle (not mid-recording). Injects Return into the
-            // focused app — e.g. to send a message that was just dictated.
+        case .keystroke(let command):
+            // Keystroke commands (⌘A, ⌘Z, Return, …) only fire while idle, not
+            // mid-recording — they act on the focused app, e.g. to send or edit
+            // a message that was just dictated.
             guard pipeline.canStartRecording else { return }
             scheduleWakeAutoDisarm() // counts as activity
-            Task { await TextInjector.pressReturn() }
+            let stroke = command.stroke
+            Task { await TextInjector.pressKey(stroke.keyCode, flags: stroke.flags) }
         }
     }
 

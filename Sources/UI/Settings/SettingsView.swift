@@ -84,6 +84,8 @@ struct SettingsView: View {
             SetupSettingsView(appState: appState, openTab: { selectedTab = $0 })
         case .general:
             GeneralSettingsView(appState: appState)
+        case .voiceCommands:
+            VoiceCommandsSettingsView(appState: appState)
         case .providers:
             ProvidersSettingsView(appState: appState)
         case .prompts:

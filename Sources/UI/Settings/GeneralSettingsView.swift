@@ -161,24 +161,12 @@ struct GeneralSettingsView: View {
                 if appState.wakeWordEnabled {
                     VStack(alignment: .leading, spacing: 6) {
                         Label {
-                            Text("**To start:** say ") + Text("“Start Comet”").bold()
-                                + Text(" or ") + Text("“Hey Comet”").bold()
+                            Text("Say ") + Text("“Start Comet”").bold() + Text(" to begin, ")
+                                + Text("“Stop Comet”").bold() + Text(" to end.")
                         } icon: {
                             Image(systemName: "mic.fill").foregroundStyle(.green)
                         }
-                        Label {
-                            Text("**To stop:** say ") + Text("“Stop Comet”").bold()
-                                + Text(" or ") + Text("“End Comet”").bold()
-                        } icon: {
-                            Image(systemName: "stop.fill").foregroundStyle(.red)
-                        }
-                        Label {
-                            Text("**To press Return** (e.g. send a message): say ")
-                                + Text("“Press Return”").bold() + Text(" or ") + Text("“New Line”").bold()
-                        } icon: {
-                            Image(systemName: "return").foregroundStyle(.blue)
-                        }
-                        Text("“Dictation” also works in place of “Comet” (e.g. “Start Dictation”, “Stop Dictation”).")
+                        Text("Plus ⌘A, ⌘C, ⌘Z, Return and more while armed — see the **Voice Commands** tab for the full list.")
                             .foregroundStyle(.secondary)
                     }
                     .font(.caption)
