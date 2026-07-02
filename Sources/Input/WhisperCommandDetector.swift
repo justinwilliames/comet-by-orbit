@@ -52,6 +52,8 @@ final class WhisperCommandDetector {
     private var utteranceFrames: AVAudioFramePosition = 0
     private var hadSpeech = false
     private var trailingSilence: Double = 0
+    private var bufferCount = 0        // queue-confined, for level logging
+    private var peakRMS: Float = 0     // queue-confined
 
     private var lastFire: [String: Date] = [:] // main-thread only
     private var recentSnippets: [(date: Date, text: String)] = [] // main-thread only
@@ -122,11 +124,11 @@ final class WhisperCommandDetector {
 
     // MARK: - Capture → utterance (queue-confined)
 
-    /// The tap/fed buffer is only valid during the callback, so deep-copy it
-    /// before hopping onto our serial queue.
+    /// Hand the raw buffer to our serial queue, exactly as `AudioRecorder`
+    /// hands buffers to its writer queue (tap buffers survive this in practice).
     private func ingest(_ buffer: AVAudioPCMBuffer) {
-        guard let copy = buffer.detectorCopy() else { return }
-        queue.async { self.handle(copy) }
+        guard isActive else { return }
+        queue.async { self.handle(buffer) }
     }
 
     private func handle(_ buffer: AVAudioPCMBuffer) {
@@ -134,6 +136,16 @@ final class WhisperCommandDetector {
         let rms = Self.rms(buffer)
         let sampleRate = buffer.format.sampleRate
         let bufferDuration = sampleRate > 0 ? Double(buffer.frameLength) / sampleRate : 0
+
+        // Level diagnostics: log the peak RMS roughly once a second so we can
+        // see whether audio is arriving and tune the speech threshold.
+        bufferCount += 1
+        peakRMS = max(peakRMS, rms)
+        if bufferCount >= 48 {
+            logger.info("audio level: peakRMS=\(String(format: "%.4f", self.peakRMS), privacy: .public) (threshold \(String(format: "%.4f", self.speechThreshold), privacy: .public))")
+            bufferCount = 0
+            peakRMS = 0
+        }
 
         if rms >= speechThreshold {
             if utteranceFile == nil { openUtterance(format: buffer.format) }
@@ -311,20 +323,3 @@ final class WhisperCommandDetector {
     }
 }
 
-private extension AVAudioPCMBuffer {
-    /// Format-agnostic independent deep copy, so a tap/fed buffer can be
-    /// processed after the callback returns.
-    func detectorCopy() -> AVAudioPCMBuffer? {
-        guard frameLength > 0,
-              let copy = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameLength)
-        else { return nil }
-        copy.frameLength = frameLength
-        let source = UnsafeMutableAudioBufferListPointer(UnsafeMutablePointer(mutating: audioBufferList))
-        let destination = UnsafeMutableAudioBufferListPointer(copy.mutableAudioBufferList)
-        for index in 0 ..< min(source.count, destination.count) {
-            guard let src = source[index].mData, let dst = destination[index].mData else { continue }
-            memcpy(dst, src, Int(source[index].mDataByteSize))
-        }
-        return copy
-    }
-}
