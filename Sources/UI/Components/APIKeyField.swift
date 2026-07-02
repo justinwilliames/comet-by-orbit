@@ -6,6 +6,11 @@ import SwiftUI
 /// "a key is already saved" state is shown as status text, never as a
 /// placeholder *inside* the value (which previously could be saved verbatim,
 /// overwriting the real key with mask characters).
+///
+/// Reveal behaviour: tapping the eye when a key is stored loads the saved
+/// value directly from the Keychain so the user can inspect it. Re-concealing
+/// (or the trash action) clears that loaded value so it cannot be accidentally
+/// re-saved unchanged.
 struct APIKeyField: View {
     let label: String
     let key: KeychainKey
@@ -15,6 +20,9 @@ struct APIKeyField: View {
     @State private var isSaved: Bool = false
     @State private var isRevealed: Bool = false
     @State private var hasStoredKey: Bool = false
+    /// True while `value` was loaded from Keychain via the reveal button
+    /// (as opposed to freshly typed by the user).
+    @State private var isRevealedFromKeychain: Bool = false
 
     private var trimmedValue: String {
         value.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -38,14 +46,26 @@ struct APIKeyField: View {
                 Group {
                     if isRevealed {
                         TextField(placeholder, text: $value)
+                            .id("apikey-visible-\(key.rawValue)")
                     } else {
                         SecureField(placeholder, text: $value)
+                            .id("apikey-secure-\(key.rawValue)")
                     }
                 }
                 .textFieldStyle(.roundedBorder)
                 .font(.system(.caption, design: .monospaced))
 
+                // Eye / reveal button — loads from Keychain on reveal when field is empty
                 Button {
+                    if !isRevealed, hasStoredKey, value.isEmpty {
+                        // Load saved key at reveal time only — never on appear
+                        value = keychain.get(key) ?? ""
+                        isRevealedFromKeychain = true
+                    } else if isRevealed, isRevealedFromKeychain {
+                        // Re-conceal: discard the loaded value so it can't be saved unchanged
+                        value = ""
+                        isRevealedFromKeychain = false
+                    }
                     isRevealed.toggle()
                 } label: {
                     Image(systemName: isRevealed ? "eye.slash" : "eye")
@@ -53,17 +73,23 @@ struct APIKeyField: View {
                 .buttonStyle(.borderless)
 
                 Button(isSaved ? "Saved" : "Save") {
-                    let key = trimmedValue
-                    guard !key.isEmpty else { return }
-                    keychain.set(self.key, value: key)
+                    let trimmed = trimmedValue
+                    guard !trimmed.isEmpty else { return }
+                    keychain.set(self.key, value: trimmed)
                     hasStoredKey = true
+                    isRevealedFromKeychain = false
                     value = ""
+                    isRevealed = false
                     withAnimation { isSaved = true }
                     DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
                         isSaved = false
                     }
                 }
-                .disabled(trimmedValue.isEmpty)
+                // Disable when empty, or when the revealed-from-keychain value is unchanged
+                .disabled(
+                    trimmedValue.isEmpty ||
+                    (isRevealedFromKeychain && trimmedValue == (keychain.get(key) ?? ""))
+                )
                 .buttonStyle(.borderedProminent)
                 .controlSize(.small)
 
@@ -71,7 +97,9 @@ struct APIKeyField: View {
                     Button {
                         keychain.delete(key)
                         hasStoredKey = false
+                        isRevealedFromKeychain = false
                         value = ""
+                        isRevealed = false
                     } label: {
                         Image(systemName: "trash")
                             .foregroundStyle(.red)
@@ -84,6 +112,19 @@ struct APIKeyField: View {
             // Never seed `value` with a mask — leave it empty so nothing but a
             // freshly typed key can ever be written to the Keychain.
             hasStoredKey = keychain.has(key)
+        }
+        // Re-read stored state whenever any key changes (fixes stale badge across
+        // duplicate APIKeyField instances pointing at the same KeychainKey).
+        .onReceive(NotificationCenter.default.publisher(for: KeychainManager.apiKeysDidChange)) { note in
+            if note.object as? String == key.rawValue {
+                hasStoredKey = keychain.has(key)
+                // If the key was just deleted by another instance, clear any revealed state
+                if !hasStoredKey {
+                    isRevealedFromKeychain = false
+                    value = ""
+                    isRevealed = false
+                }
+            }
         }
     }
 

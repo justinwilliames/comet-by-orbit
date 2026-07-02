@@ -28,6 +28,10 @@ enum KeychainKey: String, CaseIterable {
 final class KeychainManager {
     static let shared = KeychainManager()
 
+    /// Posted whenever a key is added, updated, or deleted.
+    /// `object` is the `KeychainKey.rawValue` String that changed.
+    static let apiKeysDidChange = Notification.Name("team.yourorbit.OrbitDictation.apiKeysDidChange")
+
     private let service = "team.yourorbit.OrbitDictation"
 
     private init() {}
@@ -68,7 +72,14 @@ final class KeychainManager {
         ]
 
         let status = SecItemAdd(query as CFDictionary, nil)
-        return status == errSecSuccess
+        let succeeded = status == errSecSuccess
+        if succeeded {
+            NotificationCenter.default.post(
+                name: KeychainManager.apiKeysDidChange,
+                object: key.rawValue
+            )
+        }
+        return succeeded
     }
 
     @discardableResult
@@ -80,7 +91,14 @@ final class KeychainManager {
         ]
 
         let status = SecItemDelete(query as CFDictionary)
-        return status == errSecSuccess || status == errSecItemNotFound
+        let succeeded = status == errSecSuccess || status == errSecItemNotFound
+        if succeeded {
+            NotificationCenter.default.post(
+                name: KeychainManager.apiKeysDidChange,
+                object: key.rawValue
+            )
+        }
+        return succeeded
     }
 
     func has(_ key: KeychainKey) -> Bool {

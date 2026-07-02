@@ -41,6 +41,10 @@ final class AppState: ObservableObject {
     @Published private(set) var microphoneAccessGranted = AudioRecorder.hasMicrophoneAccess
     /// True while the wake word is actively listening (armed window).
     @Published private(set) var wakeArmed = false
+    /// A transient, non-fatal wake issue to surface (e.g. commands can't reach
+    /// the speech provider). Auto-clears; does NOT disarm.
+    @Published private(set) var wakeIssue: String?
+    private var wakeIssueClearTask: Task<Void, Never>?
 
     let pipeline: DictationPipeline
     let recorder: AudioRecorder
@@ -354,6 +358,11 @@ final class AppState: ObservableObject {
             self.disarmWakeWord()
             self.pipeline.presentError(message)
         }
+        // Non-fatal: commands can't reach the provider (bad key / offline).
+        // Surface it without disarming so the user isn't left guessing.
+        commandDetector.onTranscriptionError = { [weak self] message in
+            self?.flagWakeIssue(message)
+        }
         // Detect commands by transcribing short snippets through the user's own
         // Whisper provider — the same accurate engine as dictation.
         commandDetector.transcribe = { [weak self] url in
@@ -392,7 +401,14 @@ final class AppState: ObservableObject {
             pipeline.presentError("Microphone access is required for the wake word.")
             return
         }
+        // Commands are recognized via the STT provider — arming without a
+        // configured one would silently fail on every command.
+        guard isSelectedSTTConfigured else {
+            pipeline.presentError("\(selectedSTT.displayName) needs to be configured before the wake word can recognize commands — add its API key in Settings ▸ Providers (or switch to Apple on-device STT).")
+            return
+        }
         wakeArmed = true
+        wakeIssue = nil
         pipeline.trailingStripPhrases = VoiceCommands.stopPhrases
         commandDetector.startIdle()
         scheduleWakeAutoDisarm()
@@ -404,8 +420,24 @@ final class AppState: ObservableObject {
         wakeMaxDurationTask?.cancel()
         wakeMaxDurationTask = nil
         wakeArmed = false
+        // If a wake-started dictation is still recording, end it — otherwise
+        // disarming leaves the mic open with no stop-listener and no cap.
+        if wakeInitiatedSession, pipeline.canStopRecording {
+            stopDictation()
+        }
         recorder.onBuffer = nil
         commandDetector.stop()
+    }
+
+    /// Surface a transient, non-fatal wake issue (auto-clears, no disarm).
+    private func flagWakeIssue(_ message: String) {
+        wakeIssue = message
+        wakeIssueClearTask?.cancel()
+        wakeIssueClearTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 6_000_000_000)
+            guard !Task.isCancelled else { return }
+            self?.wakeIssue = nil
+        }
     }
 
     /// Called when the user turns the feature off entirely in settings.

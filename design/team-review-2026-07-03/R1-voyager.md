@@ -1,0 +1,59 @@
+# R1 — Voyager (Data / Backend / Pipeline Integrity)
+
+Target: hands-free voice commands rebuilt to transcribe short mic snippets through the user's cloud Whisper STT (Groq/OpenAI/Deepgram/ElevenLabs) instead of on-device.
+
+Verdict: the mechanism works, but the **idle armed path has none of the safety rails the main dictation pipeline has** — no speech gate, no rate limit, no in-flight cap, no backoff, no privacy disclosure. In a talky room it is an unbounded cloud-upload + spend machine that also self-DoSes real dictation through a shared key. Fix the top 4 before this ships.
+
+---
+
+## SHIP-NOW
+
+### 1. Idle armed mode uploads EVERY snippet to the cloud with no speech gate — cost blowout + garbage transcripts
+**`WhisperCommandDetector.swift:139-178, 218-234`** (and `AppState.transcribeCommandSnippet` :369).
+The main pipeline gates hard before any STT call — `DictationPipeline.recordingHasSpeech` (`DictationPipeline.swift:834`) applies an adaptive noise-floor threshold + cumulative-voiced-time test, and `isKnownSilenceHallucination` (:816) drops Whisper's "Thanks for watching!" silence-fills. **The command detector applies NONE of this.** Its only gate is a raw `onsetThreshold` of 0.006 RMS (:42) and a 0.4s min duration (:45). The comment on :39 even admits silence peaks ~0.003 and speech ~0.010 — so 0.006 is barely above the noise floor. Every cough, chair scrape, keyboard clack, TV, or nearby conversation that crosses 0.006 for 0.4s opens an utterance, normalizes it, and **uploads it to the cloud STT.**
+
+WHY IT BREAKS OPERATION: In a talky room a snippet finalizes roughly every 1-2s (4s cap + 1s end-silence). That's ~30-60 cloud STT calls/minute per armed user, indefinitely (idle window auto-disarms only after **15 minutes** — `AppState.swift:54`). Groq Whisper and OpenAI both bill per audio-second; this is a silent, continuous spend the user never authorized and can't see. Worse, most of those uploads are non-speech → Whisper hallucinates canned phrases → wasted money AND spurious command matches.
+
+FIX: Reuse the pipeline's gate. Before `finalizeUtterance` hands off to `transcribeAndMatch`, run the same adaptive-noise-floor + min-voiced-seconds check over the utterance's own buffer RMS series (the detector already computes `rms` per buffer in `handle` — accumulate voiced frames the same way `recordingHasSpeech` does). Raise `onsetThreshold` toward the observed speech/silence midpoint (~0.008-0.010). And apply `isKnownSilenceHallucination` to the returned transcript before matching (currently only the main pipeline does). Cheapest partial mitigation if you want one line today: gate on cumulative voiced time inside the utterance, not just total duration.
+
+### 2. No rate limit / in-flight cap / backoff → 429 storm that wedges real dictation via the shared key
+**`WhisperCommandDetector.swift:233`** fires `Task { await transcribeAndMatch(...) }` per finalized utterance with **no concurrency cap and no cooldown.** `ProviderHTTPClient` (`ProviderHTTPClient.swift:56`) has **zero retry/backoff logic** and no 429 special-casing — a 429 just becomes `STTError.apiError(statusCode: 429)`, which `transcribeAndMatch` (:252) swallows with a `logger.error` and returns. No user signal, no backoff, no arming pause.
+
+WHY IT BREAKS OPERATION: The command snippets and the user's actual dictation share ONE Groq key and ONE quota (`ProviderRegistry.swift:27`, `.groqAPIKey` for both STT and LLM cleanup). A room full of chatter drives the command path into Groq's rate limit; Groq then 429s the user's *real* dictation transcription (`DictationPipeline` :349) **and** the LLM cleanup (`.groq` LLM, same key, :55). So the always-on background feature can rate-limit-starve the foreground feature the user actually pressed a key for. The pipeline already has comments acknowledging "Groq daily-token cap kicks in" and an 8B-fallback failure class (`DictationPipeline.swift:606`) — this path pours fuel on exactly that fire. On repeated 429/timeout the detector neither backs off nor tells the user; it just silently spams and the commands "randomly stop working."
+
+FIX: (a) Serialize the command STT — at most **one in-flight command transcription**; if one is running when the next utterance finalizes, drop the older/newer per taste rather than queue unboundedly. (b) On a 429 or timeout from the command path, apply exponential backoff (pause arming STT for e.g. 5s→10s→30s) and surface a one-time `onUnavailable` toast ("Voice commands paused — provider rate limit"). (c) Add a minimum inter-upload interval (e.g. ≥1s) so even worst-case chatter can't exceed N calls/min. Ideally give the command path its own lightweight budget counter.
+
+### 3. No disclosure that live mic audio leaves the machine while armed
+**`VoiceCommandsSettingsView.swift:23`** — the only user-facing copy says commands are "recognized by your own Whisper provider (the same one that transcribes dictation) for accuracy." It never states that **while armed, continuous short snippets of everything audible near the mic are uploaded to a third-party cloud** (Groq/OpenAI/Deepgram/ElevenLabs). Dictation is a deliberate press-to-talk act; an always-listening armed window that streams ambient audio to the cloud is a materially different privacy posture, and it's undisclosed. `ProvidersSettingsView.swift:7` markets Apple STT as the "zero cloud" option — but selecting *any* cloud STT silently opts the wake word into continuous cloud upload too.
+
+WHY IT MATTERS: Privacy honesty + boundary integrity. Bystanders' speech, background conversations, whatever's on TV — all crossing the machine boundary to a third party without the user (or those bystanders) being told. This is the kind of thing that ends up in a security writeup.
+
+FIX: Add explicit copy to the Voice Commands settings AND the arm affordance: "While armed with a cloud STT provider, short audio snippets are sent to <provider> for recognition." Strongly consider routing the *command* detector to Apple on-device by default regardless of the dictation STT choice (on-device wake detection is the industry norm precisely for this reason), and only use cloud STT for commands if the user explicitly opts in.
+
+### 4. Transcripts + heard audio levels logged at `privacy: .public` — PII leak into unified logging
+**`WhisperCommandDetector.swift:267`**: `logger.info("Snippet heard: "\(transcript, privacy: .public)" → normalized …")` — this prints **every transcribed snippet verbatim, public**, into the macOS unified log. Because the idle detector transcribes ambient audio (finding #1), this logs whatever anyone near the mic said — not just commands. `DictationPipeline.swift:403` similarly logs the first 400 chars of LLM output public, and the `requestBodySummary` in `GroqWhisperSTT.swift:67` is stored in the in-app `ProviderRequestLog`. Audio-level peaks are also public (:147).
+
+WHY IT MATTERS: `.public` means the strings survive in `log show` / sysdiagnose and are readable by anything with log access — a real PII exfil surface for dictated passwords, messages, and now ambient bystander speech. Auth headers are correctly redacted (`ProviderHTTPClient.swift:213`) — the transcript content is the gap.
+
+FIX: Change transcript/output interpolations to `privacy: .private` (the default; drop the `.public` annotation) or `.private(mask: .hash)`. Keep `.public` only for non-content diagnostics (status codes, durations, provider IDs, key names). Do this for :267 and `DictationPipeline.swift:403` at minimum.
+
+---
+
+## DEFER (real, lower blast radius)
+
+### 5. `makeSTTProvider` returns nil on missing key → commands silently never fire, no signal
+**`AppState.swift:369-370`**: `guard let provider = registry.makeSTTProvider(for: selectedSTT) else { return "" }`. If the user arms the wake word while their selected STT has no key in keychain (`ProviderRegistry.swift:24-34` all return nil on missing key), `transcribeCommandSnippet` returns `""`, `match` sees empty, nothing ever fires. The user arms, speaks "Comet start," and gets **nothing, with zero feedback** — indistinguishable from a broken feature. `armWakeWord` (:389) only checks mic permission, not STT config. DEFER because it needs a key to be missing; still an honesty gap. FIX: gate arming on `isSelectedSTTConfigured` and surface `onUnavailable` if not; distinguish "" (no key) from "" (silence) at the call site.
+
+### 6. Temp `.caf`/`.wav` leak on specific error paths — disk fill over a long armed session
+**`WhisperCommandDetector.swift:180-192`**: if `AVAudioFile(forWriting:)` throws in `openUtterance`, `utteranceURL` is never set — but if it *succeeds* and a later write path throws, cleanup depends on `finalizeUtterance`/`discardUtterance`/`transcribeAndMatch`'s `defer`. Traced the main paths and they're mostly covered (the two `defer { removeItem }` in `transcribeAndMatch` :237/:247 are good). The real gap: `openUtterance` sets `utteranceURL` **then** on a subsequent buffer, if `stop()` races in from the main thread between `openUtterance` and finalize, `discardUtterance` (:213) does clean it — but if the app is force-quit mid-armed-session, every in-flight + orphaned temp file stays. Over a 15-min armed session that's up to ~450-900 temp files if #1 isn't fixed. Largely mitigated by fixing #1 (far fewer utterances). DEFER. FIX: sweep `FileManager.temporaryDirectory` for stale app-owned `.caf`/`.wav` on launch and on disarm.
+
+### 7. Format assumption: aggregate/virtual input devices & sample-rate edges
+**`AudioNormalization.swift:38`**: `AVAudioConverter(from: inputFormat, to: outputFormat)` returns nil / fails on some exotic aggregate-device formats (e.g. multi-channel virtual devices, unusual sample rates). Handled honestly — throws `preparationFailed`, and `transcribeAndMatch` (:242) catches and returns. So a bad input format just means commands silently don't work (same signal gap as #5) rather than a crash. The `.medium` sample-rate converter quality (:42) is fine for STT. The RMS helpers (`WhisperCommandDetector.swift:315`, `AudioRecorder.swift:206`) only read **channel 0** — correct for level, and normalization downmixes to mono, so no correctness bug. DEFER: add a one-time toast when normalization fails while armed, so "commands don't work on my Aggregate Device" is diagnosable.
+
+### 8. Trailing stop-phrase strip loop — bounded, but can over-strip legitimate tail words
+**`DictationPipeline.swift:752-777`** (`strippingTrailingPhrases`). Not pathological — the `while stripping` loop removes at most `target.count` words per pass and always makes progress or exits, so it terminates. The real risk is **over-stripping**: `stopActions` includes bare `"end"`, `"finish"`, `"go"` (via `startActions`) prefixed by keywords incl. `"comment"`/`"commit"` (`VoiceCommands.swift:56,73`). A dictation that legitimately ends "...and then commit" or "...comment finish" could get its real trailing words trimmed. Low frequency (needs keyword+action adjacency at the very end) and only affects the tail. DEFER. FIX: only strip when the matched phrase sat inside the wake-detected stop window, not on pure text suffix match; or require the full "<keyword> <stopword>" bigram (already mostly the case) AND that it was the phrase that actually fired the stop.
+
+---
+
+## Cross-cutting note for the orchestrator
+Findings #1 and #2 compound: the missing speech gate is what *generates* the volume that trips the missing rate limit that starves the shared key. Fix #1 first (kills ~90% of the calls), then #2 as defense-in-depth. #3 and #4 are independent and cheap. The whole class of bug is "the armed idle path was built without porting the main pipeline's hard-won gates (`recordingHasSpeech`, silence-hallucination filter, honest error surfacing)" — the safest structural fix is to make the command detector reuse those exact functions rather than re-implement a thinner version.

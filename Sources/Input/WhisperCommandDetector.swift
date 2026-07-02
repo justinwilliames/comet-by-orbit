@@ -9,15 +9,20 @@ private let logger = Logger(subsystem: "team.yourorbit.OrbitDictation", category
 /// accurate engine that powers dictation — instead of Apple's on-device
 /// recognizer.
 ///
-/// It runs simple energy-based voice-activity detection: it accumulates audio
-/// while you're speaking and, when you pause, sends just that snippet to the
-/// provider and matches the returned text against the command table.
+/// Energy-based voice-activity detection accumulates audio from speech onset,
+/// ends the snippet ~1s after you stop, and sends just that snippet to the
+/// provider. Matches the returned text against the command table.
 ///
-/// Two modes, driven by the owner:
+/// Two modes:
 ///  - `.idle`: owns a mic engine; matches the start phrase + keystroke commands.
-///  - `.recording`: no engine — the dictation recorder tees its buffers in via
-///    `feed(_:)`; matches only the stop phrase, so you can end explicitly with
-///    "Comet stop" and a thinking-pause never stops you.
+///  - `.recording`: no engine — the dictation recorder tees buffers in via
+///    `feed(_:)`; matches only the stop phrase.
+///
+/// THREADING: all detection state is confined to `queue`. Control methods
+/// (start/stop) manage the AVAudioEngine on the caller's thread and flip state
+/// via `queue`. Tap/fed buffers are deep-copied (they're only valid during the
+/// callback) and handed to `queue`. Callbacks (`onCommand`/`onUnavailable`/
+/// `onTranscriptionError`) are always delivered on the main queue.
 final class WhisperCommandDetector {
     enum WakeAction {
         case start
@@ -30,70 +35,87 @@ final class WhisperCommandDetector {
     var onCommand: ((WakeAction) -> Void)?
     /// Delivered on the main queue if the mic can't start.
     var onUnavailable: ((String) -> Void)?
+    /// Delivered on the main queue (debounced) when snippet transcription keeps
+    /// failing — so a bad key / offline provider isn't a silent dead end.
+    var onTranscriptionError: ((String) -> Void)?
     /// Transcribes a 16 kHz mono WAV via the user's provider. Set by the owner.
     var transcribe: ((URL) async throws -> String)?
 
     // Tuning.
-    // Capture from speech onset and end ~1s after you stop speaking, so
-    // commands are snappy and "Comet stop" (said after a natural pause) is
-    // segmented cleanly. The low onset threshold (mic peaks only ~0.010 for
-    // speech, ~0.003 silence) keeps quiet speech above the line so it doesn't
-    // fragment mid-phrase.
-    private let onsetThreshold: Float = 0.006     // RMS that starts/sustains a capture
-    private let endSilenceSeconds: Double = 1.0   // silence after speech that ends it
+    private let onsetThreshold: Float = 0.006     // RMS that starts/sustains a capture (tuned for quiet mics)
+    private let endSilenceSeconds: Double = 1.0   // silence after speech that ends the snippet
     private let maxCaptureSeconds: Double = 4.0    // safety cap
-    private let minUtteranceSeconds: Double = 0.4
-    private let debounce: TimeInterval = 2.0
+    private let minUtteranceSeconds: Double = 0.4  // ignore transient blips
+    private let debounce: TimeInterval = 2.0        // per-command re-fire guard
+    private let minUploadInterval: TimeInterval = 1.0 // rate cap: don't start uploads faster than this
+    private let errorSignalInterval: TimeInterval = 20 // debounce the user-facing error signal
 
     private let queue = DispatchQueue(label: "team.yourorbit.OrbitDictation.whisper-cmd", qos: .userInitiated)
-    private var audioEngine: AVAudioEngine?
-    private var mode: Mode = .idle
-    private var isActive = false
 
-    // Utterance accumulation — confined to `queue`.
+    // Engine — created/started/stopped on the control (main) thread only.
+    private var audioEngine: AVAudioEngine?
+
+    // ── All state below is QUEUE-CONFINED ──────────────────────────────────
+    private var isActive = false
+    private var mode: Mode = .idle
+    /// Bumped on every start/stop so a buffer or transcription result from a
+    /// superseded session can't act in the wrong mode.
+    private var session = 0
+
     private var utteranceFile: AVAudioFile?
     private var utteranceURL: URL?
     private var utteranceFormat: AVAudioFormat?
     private var utteranceFrames: AVAudioFramePosition = 0
     private var capturing = false
     private var trailingSilence: Double = 0
-    private var bufferCount = 0        // queue-confined, for level logging
-    private var peakRMS: Float = 0     // queue-confined
 
-    private var lastFire: [String: Date] = [:] // main-thread only
-    private var recentSnippets: [(date: Date, text: String)] = [] // main-thread only
+    private var transcribing = false          // single in-flight upload (rate/cost guard)
+    private var lastUploadAt = Date.distantPast
+    private var lastErrorSignalAt = Date.distantPast
+
+    private var lastFire: [String: Date] = [:]
+    private var recentSnippets: [(date: Date, text: String)] = []
     private let contextWindow: TimeInterval = 4.0
 
-    // MARK: - Control
+    // MARK: - Control (caller thread)
 
     /// Listen on our own mic for the start phrase + keystroke commands (idle).
     func startIdle() {
-        mode = .idle
-        isActive = true
+        queue.async {
+            self.isActive = true
+            self.mode = .idle
+            self.session &+= 1
+            self.resetUtterance()
+        }
         startOwnEngine()
     }
 
     /// Listen for the stop phrase from recorder-fed buffers (during recording).
     func startRecording() {
         stopEngine()
-        mode = .recording
-        isActive = true
-        queue.async { self.resetUtterance() }
+        queue.async {
+            self.isActive = true
+            self.mode = .recording
+            self.session &+= 1
+            self.resetUtterance()
+        }
     }
 
     /// Feed a captured buffer from the dictation recorder (recording mode).
     func feed(_ buffer: AVAudioPCMBuffer) {
-        guard isActive, mode == .recording else { return }
         ingest(buffer)
     }
 
     func stop() {
-        isActive = false
         stopEngine()
-        queue.async { self.discardUtterance() }
+        queue.async {
+            self.isActive = false
+            self.session &+= 1
+            self.discardUtterance()
+        }
     }
 
-    // MARK: - Engine
+    // MARK: - Engine (caller thread)
 
     private func startOwnEngine() {
         stopEngine()
@@ -115,8 +137,7 @@ final class WhisperCommandDetector {
             return
         }
         audioEngine = engine
-        queue.async { self.resetUtterance() }
-        logger.info("Whisper command detector listening (idle)")
+        logger.info("Voice-command detector listening")
     }
 
     private func stopEngine() {
@@ -129,26 +150,16 @@ final class WhisperCommandDetector {
 
     // MARK: - Capture → utterance (queue-confined)
 
-    /// Hand the raw buffer to our serial queue, exactly as `AudioRecorder`
-    /// hands buffers to its writer queue (tap buffers survive this in practice).
+    /// Deep-copy the buffer on the audio thread (it's only valid during the
+    /// callback), then process on our serial queue.
     private func ingest(_ buffer: AVAudioPCMBuffer) {
-        guard isActive else { return }
-        queue.async { self.handle(buffer) }
+        guard let copy = buffer.commandDetectorCopy() else { return }
+        queue.async { self.handle(copy) }
     }
 
     private func handle(_ buffer: AVAudioPCMBuffer) {
         guard isActive else { return }
         let rms = Self.rms(buffer)
-
-        // Level diagnostics: log the peak RMS ~once a second to tune the onset.
-        bufferCount += 1
-        peakRMS = max(peakRMS, rms)
-        if bufferCount >= 48 {
-            logger.info("audio level: peakRMS=\(String(format: "%.4f", self.peakRMS), privacy: .public) (onset \(String(format: "%.4f", self.onsetThreshold), privacy: .public))")
-            bufferCount = 0
-            peakRMS = 0
-        }
-
         let sampleRate = buffer.format.sampleRate
         let bufferDuration = sampleRate > 0 ? Double(buffer.frameLength) / sampleRate : 0
 
@@ -159,15 +170,14 @@ final class WhisperCommandDetector {
             } else {
                 trailingSilence += bufferDuration
                 if trailingSilence >= endSilenceSeconds {
-                    finalizeUtterance() // ended shortly after you stopped speaking
+                    finalizeUtterance()
                     return
                 }
             }
             if sampleRate > 0, Double(utteranceFrames) / sampleRate >= maxCaptureSeconds {
-                finalizeUtterance() // safety cap
+                finalizeUtterance()
             }
         } else if rms >= onsetThreshold {
-            // Speech onset — start capturing.
             openUtterance(format: buffer.format)
             if utteranceFile != nil {
                 capturing = true
@@ -187,7 +197,13 @@ final class WhisperCommandDetector {
             utteranceFrames = 0
         } catch {
             logger.error("Failed to open utterance file: \(error.localizedDescription, privacy: .public)")
+            // Leave no half-open state behind.
             utteranceFile = nil
+            utteranceURL = nil
+            utteranceFormat = nil
+            capturing = false
+            trailingSilence = 0
+            try? FileManager.default.removeItem(at: url)
         }
     }
 
@@ -216,25 +232,39 @@ final class WhisperCommandDetector {
     }
 
     private func finalizeUtterance() {
-        guard let url = utteranceURL, let format = utteranceFormat else {
-            resetUtterance()
-            return
-        }
-        let duration = format.sampleRate > 0 ? Double(utteranceFrames) / format.sampleRate : 0
-        let currentMode = mode
+        let url = utteranceURL
+        let format = utteranceFormat
+        let frames = utteranceFrames
+        let capturedMode = mode
+        let capturedSession = session
         utteranceFile = nil // flush/close
         resetUtterance()
 
+        guard let url, let format else { return }
+        let duration = format.sampleRate > 0 ? Double(frames) / format.sampleRate : 0
         guard duration >= minUtteranceSeconds else {
             try? FileManager.default.removeItem(at: url)
             return
         }
-        logger.info("Utterance captured (\(Int(duration * 1000), privacy: .public) ms) → transcribing")
-        Task { await self.transcribeAndMatch(url: url, mode: currentMode) }
+
+        // Rate/cost guard: at most one upload in flight, and not faster than
+        // minUploadInterval. Drop excess snippets rather than storm the provider
+        // (which shares a key/quota with real dictation).
+        let now = Date()
+        guard !transcribing, now.timeIntervalSince(lastUploadAt) >= minUploadInterval else {
+            try? FileManager.default.removeItem(at: url)
+            return
+        }
+        transcribing = true
+        lastUploadAt = now
+        Task { await self.transcribeAndMatch(url: url, mode: capturedMode, session: capturedSession) }
     }
 
-    private func transcribeAndMatch(url: URL, mode: Mode) async {
-        defer { try? FileManager.default.removeItem(at: url) }
+    private func transcribeAndMatch(url: URL, mode: Mode, session: Int) async {
+        defer {
+            try? FileManager.default.removeItem(at: url)
+            queue.async { self.transcribing = false }
+        }
         guard let transcribe else { return }
 
         let wavURL: URL
@@ -246,29 +276,28 @@ final class WhisperCommandDetector {
         }
         defer { try? FileManager.default.removeItem(at: wavURL) }
 
-        let text: String
         do {
-            text = try await transcribe(wavURL)
+            let text = try await transcribe(wavURL)
+            queue.async { self.match(text, mode: mode, session: session) }
         } catch {
-            logger.error("Snippet transcription failed: \(error.localizedDescription, privacy: .public)")
-            return
+            // No transcript content in logs (it can be bystander speech).
+            logger.error("Snippet transcription failed")
+            signalTranscriptionError()
         }
-        DispatchQueue.main.async { [weak self] in self?.match(text, mode: mode) }
     }
 
-    // MARK: - Matching (main thread)
+    // MARK: - Matching (queue-confined)
 
-    private func match(_ transcript: String, mode: Mode) {
-        guard isActive else { return }
+    private func match(_ transcript: String, mode: Mode, session: Int) {
+        guard isActive, session == self.session else { return }
         let snippet = transcript.lowercased()
             .components(separatedBy: CharacterSet.alphanumerics.inverted)
             .filter { !$0.isEmpty }
             .joined(separator: " ")
-        logger.info("Snippet heard: “\(transcript, privacy: .public)” → normalized “\(snippet, privacy: .public)”")
         guard !snippet.isEmpty else { return }
 
-        // Keep a short rolling context so a natural pause between the keyword
-        // and the action ("Comet… copy") still matches as "comet copy".
+        // Short rolling context so a natural pause between the keyword and the
+        // action ("Comet… copy") still matches as "comet copy".
         let now = Date()
         recentSnippets.append((now, snippet))
         recentSnippets.removeAll { now.timeIntervalSince($0.date) > contextWindow }
@@ -303,7 +332,20 @@ final class WhisperCommandDetector {
         if let last = lastFire[key], now.timeIntervalSince(last) <= debounce { return }
         lastFire[key] = now
         logger.info("Voice command: \(key, privacy: .public)")
-        onCommand?(action)
+        // Async to main so the handler (which calls back into stop()/
+        // startRecording()) never unwinds our own call stack.
+        DispatchQueue.main.async { [weak self] in self?.onCommand?(action) }
+    }
+
+    private func signalTranscriptionError() {
+        queue.async {
+            let now = Date()
+            guard now.timeIntervalSince(self.lastErrorSignalAt) >= self.errorSignalInterval else { return }
+            self.lastErrorSignalAt = now
+            DispatchQueue.main.async { [weak self] in
+                self?.onTranscriptionError?("Voice commands can't reach your speech provider — check its API key in Settings ▸ Providers.")
+            }
+        }
     }
 
     private func emitUnavailable(_ message: String) {
@@ -329,3 +371,23 @@ final class WhisperCommandDetector {
     }
 }
 
+private extension AVAudioPCMBuffer {
+    /// A format-agnostic independent deep copy, so a tap/fed buffer stays valid
+    /// after the audio callback returns. Copies raw bytes per audio-buffer, so
+    /// it works for interleaved and non-interleaved, float and int formats.
+    func commandDetectorCopy() -> AVAudioPCMBuffer? {
+        guard frameLength > 0,
+              let copy = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameLength)
+        else { return nil }
+        copy.frameLength = frameLength
+        let source = UnsafeMutableAudioBufferListPointer(UnsafeMutablePointer(mutating: audioBufferList))
+        let destination = UnsafeMutableAudioBufferListPointer(copy.mutableAudioBufferList)
+        guard source.count == destination.count else { return nil }
+        for index in 0 ..< source.count {
+            guard let src = source[index].mData, let dst = destination[index].mData else { return nil }
+            let bytes = Int(min(source[index].mDataByteSize, destination[index].mDataByteSize))
+            memcpy(dst, src, bytes)
+        }
+        return copy
+    }
+}

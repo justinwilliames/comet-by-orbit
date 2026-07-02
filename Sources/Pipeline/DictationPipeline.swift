@@ -400,7 +400,7 @@ final class DictationPipeline: ObservableObject {
                     // it's following the <analysis>/<output> format and what
                     // its reasoning concluded.
                     logger.info(
-                        "LLM raw (first 400): \(response.text.prefix(400), privacy: .public)"
+                        "LLM raw (first 400): \(response.text.prefix(400), privacy: .private)"
                     )
 
                     // Extract the cleaned text from the structured response.

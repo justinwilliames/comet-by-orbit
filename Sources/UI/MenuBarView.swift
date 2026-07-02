@@ -122,7 +122,14 @@ struct MenuBarView: View {
                 }
                 .buttonStyle(.bordered)
                 .tint(appState.wakeArmed ? Color.orbit : nil)
-                .disabled(!appState.microphoneAccessGranted)
+                .disabled(!appState.microphoneAccessGranted || appState.pipeline.canStopRecording)
+
+                if let issue = appState.wakeIssue {
+                    Label(issue, systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
         }
         .padding(14)

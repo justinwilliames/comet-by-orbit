@@ -149,7 +149,7 @@ struct GeneralSettingsView: View {
     private var wakeWordCard: some View {
         PreferenceCard(
             "Wake Word",
-            detail: "Hands-free dictation — no shortcut. Commands are recognized by your Whisper provider for accuracy (short snippets are sent while armed), and it only listens while armed from the menu bar.",
+            detail: "Hands-free dictation — no shortcut. Commands are recognized by your Whisper provider for accuracy, and it only listens while armed from the menu bar.",
             icon: "waveform.badge.mic"
         ) {
             VStack(alignment: .leading, spacing: 12) {
@@ -157,6 +157,13 @@ struct GeneralSettingsView: View {
                     get: { appState.wakeWordEnabled },
                     set: { appState.wakeWordEnabledChanged(to: $0) }
                 ))
+                .disabled(!appState.microphoneAccessGranted)
+
+                if !appState.microphoneAccessGranted {
+                    Text("Grant microphone access first (Permissions above).")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
 
                 if appState.wakeWordEnabled {
                     VStack(alignment: .leading, spacing: 6) {
@@ -172,6 +179,10 @@ struct GeneralSettingsView: View {
                     .font(.caption)
 
                     Text("Arm it from the menu bar, then just talk. Listening auto-disarms after 15 minutes idle (a recording also hard-stops after 3 minutes if the stop phrase is missed). While armed, macOS shows the microphone indicator.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    Text("While armed, short audio snippets are sent to your selected speech provider for command recognition (unless you're using Apple on-device).")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

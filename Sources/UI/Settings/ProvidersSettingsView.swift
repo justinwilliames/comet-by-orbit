@@ -10,6 +10,8 @@ import SwiftUI
 struct ProvidersSettingsView: View {
     @ObservedObject var appState: AppState
     @State private var advancedExpanded: Bool = false
+    /// Bumped whenever any Keychain key changes so computed badge properties recompute.
+    @State private var refreshToken: Int = 0
 
     var body: some View {
         ScrollView {
@@ -21,6 +23,12 @@ struct ProvidersSettingsView: View {
             }
             .padding(24)
         }
+        // Force a re-evaluation of all keychain-dependent computed properties
+        // whenever a key is saved or deleted — no tab-switch required.
+        .onReceive(NotificationCenter.default.publisher(for: KeychainManager.apiKeysDidChange)) { _ in
+            refreshToken &+= 1
+        }
+        .id(refreshToken)
     }
 
     // MARK: - Recommended (Groq)
