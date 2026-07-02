@@ -744,28 +744,36 @@ final class DictationPipeline: ObservableObject {
         return String(afterOpen).trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    /// Removes a trailing stop-phrase (e.g. "End Comet") from a transcript.
-    /// Matches on alphanumeric-normalized tokens so trailing punctuation /
-    /// casing don't defeat it, then trims the raw string by that many words.
+    /// Removes trailing stop-phrases (e.g. "Comet stop dictation") from a
+    /// transcript. Matches on alphanumeric-normalized tokens so punctuation /
+    /// casing don't defeat it, and LOOPS — recognition latency means the user
+    /// often says the stop phrase two or three times before recording actually
+    /// stops, so all trailing copies must be trimmed, not just one.
     static func strippingTrailingPhrases(_ phrases: [String], from text: String) -> String {
         guard !phrases.isEmpty else { return text }
-        let words = text.split { $0.isWhitespace }.map(String.init)
-        guard !words.isEmpty else { return text }
 
         func normalized(_ s: String) -> String {
             s.lowercased().components(separatedBy: CharacterSet.alphanumerics.inverted).joined()
         }
-        let normalizedTail = words.map(normalized)
+        let targets = phrases
+            .map { $0.split { $0.isWhitespace }.map { normalized(String($0)) }.filter { !$0.isEmpty } }
+            .filter { !$0.isEmpty }
+        guard !targets.isEmpty else { return text }
 
-        for phrase in phrases {
-            let target = phrase.split { $0.isWhitespace }.map { normalized(String($0)) }.filter { !$0.isEmpty }
-            guard !target.isEmpty, target.count <= normalizedTail.count else { continue }
-            if Array(normalizedTail.suffix(target.count)) == target {
-                let kept = words.dropLast(target.count).joined(separator: " ")
-                return kept.trimmingCharacters(in: .whitespacesAndNewlines)
+        var words = text.split { $0.isWhitespace }.map(String.init)
+        var stripping = true
+        while stripping {
+            stripping = false
+            let normalizedTail = words.map(normalized)
+            for target in targets where target.count <= normalizedTail.count {
+                if Array(normalizedTail.suffix(target.count)) == target {
+                    words.removeLast(target.count)
+                    stripping = true
+                    break
+                }
             }
         }
-        return text
+        return words.joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private func normalizedTranscriptText(from text: String) -> String? {
