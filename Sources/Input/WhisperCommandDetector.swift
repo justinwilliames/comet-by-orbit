@@ -34,13 +34,14 @@ final class WhisperCommandDetector {
     var transcribe: ((URL) async throws -> String)?
 
     // Tuning.
-    // Capture a FIXED window from speech onset rather than segmenting on
-    // silence — quiet mics dip below any threshold mid-phrase, which was
-    // chopping commands into unrecognizable fragments. A fixed window keeps the
-    // whole "Comet start dictation" together for the transcriber.
-    // Tuned low: observed mic peaks are only ~0.010 for speech, ~0.003 silence.
-    private let onsetThreshold: Float = 0.006   // RMS onset that starts a capture
-    private let captureSeconds: Double = 2.5     // fixed capture length
+    // Capture from speech onset and end ~1s after you stop speaking, so
+    // commands are snappy and "Comet stop" (said after a natural pause) is
+    // segmented cleanly. The low onset threshold (mic peaks only ~0.010 for
+    // speech, ~0.003 silence) keeps quiet speech above the line so it doesn't
+    // fragment mid-phrase.
+    private let onsetThreshold: Float = 0.006     // RMS that starts/sustains a capture
+    private let endSilenceSeconds: Double = 1.0   // silence after speech that ends it
+    private let maxCaptureSeconds: Double = 4.0    // safety cap
     private let minUtteranceSeconds: Double = 0.4
     private let debounce: TimeInterval = 2.0
 
@@ -55,7 +56,7 @@ final class WhisperCommandDetector {
     private var utteranceFormat: AVAudioFormat?
     private var utteranceFrames: AVAudioFramePosition = 0
     private var capturing = false
-    private var captureTargetFrames: AVAudioFramePosition = 0
+    private var trailingSilence: Double = 0
     private var bufferCount = 0        // queue-confined, for level logging
     private var peakRMS: Float = 0     // queue-confined
 
@@ -148,18 +149,29 @@ final class WhisperCommandDetector {
             peakRMS = 0
         }
 
+        let sampleRate = buffer.format.sampleRate
+        let bufferDuration = sampleRate > 0 ? Double(buffer.frameLength) / sampleRate : 0
+
         if capturing {
             writeUtterance(buffer)
-            if captureTargetFrames > 0, utteranceFrames >= captureTargetFrames {
-                finalizeUtterance()
+            if rms >= onsetThreshold {
+                trailingSilence = 0
+            } else {
+                trailingSilence += bufferDuration
+                if trailingSilence >= endSilenceSeconds {
+                    finalizeUtterance() // ended shortly after you stopped speaking
+                    return
+                }
+            }
+            if sampleRate > 0, Double(utteranceFrames) / sampleRate >= maxCaptureSeconds {
+                finalizeUtterance() // safety cap
             }
         } else if rms >= onsetThreshold {
-            // Speech onset — capture a fixed window so the whole command stays
-            // together even when the level dips between words.
+            // Speech onset — start capturing.
             openUtterance(format: buffer.format)
             if utteranceFile != nil {
                 capturing = true
-                captureTargetFrames = AVAudioFramePosition(captureSeconds * buffer.format.sampleRate)
+                trailingSilence = 0
                 writeUtterance(buffer)
             }
         }
@@ -195,7 +207,7 @@ final class WhisperCommandDetector {
         utteranceFormat = nil
         utteranceFrames = 0
         capturing = false
-        captureTargetFrames = 0
+        trailingSilence = 0
     }
 
     private func discardUtterance() {
