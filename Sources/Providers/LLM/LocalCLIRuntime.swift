@@ -63,15 +63,15 @@ enum LocalCLIError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case let .notInstalled(tool):
-            "\(tool.displayName) isn't installed or isn't on your PATH. \(tool.loginHint)"
+            return "\(tool.displayName) isn't installed or isn't on your PATH. \(tool.loginHint)"
         case let .timedOut(tool):
-            "\(tool.displayName) took too long to respond."
+            return "\(tool.displayName) took too long to respond."
         case let .failed(tool, code, stderr):
             let detail = stderr.trimmingCharacters(in: .whitespacesAndNewlines)
             let hint = Self.looksLikeAuthFailure(detail) ? " \(tool.loginHint)" : ""
             return "\(tool.displayName) exited with code \(code).\(hint)\(detail.isEmpty ? "" : " (\(detail.prefix(200)))")"
         case let .launchFailed(tool, underlying):
-            "Couldn't launch \(tool.displayName): \(underlying)"
+            return "Couldn't launch \(tool.displayName): \(underlying)"
         }
     }
 
