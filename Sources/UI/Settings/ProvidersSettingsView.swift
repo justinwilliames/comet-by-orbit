@@ -200,9 +200,7 @@ struct ProvidersSettingsView: View {
             ForEach(LLMProviderID.allCases, id: \.self) { provider in
                 ProviderConfigurationCard(
                     name: provider.displayName,
-                    note: appState.selectedLLM == provider && !appState.isSelectedLLMConfigured
-                        ? "Comet will paste raw transcripts until credentials are added."
-                        : "Use this provider for transcript cleanup after transcription.",
+                    note: noteForLLM(provider),
                     isActive: appState.selectedLLM == provider,
                     isConfigured: appState.keychain.hasKeysFor(llm: provider)
                 ) {
@@ -216,6 +214,18 @@ struct ProvidersSettingsView: View {
                 }
             }
         }
+    }
+
+    private func noteForLLM(_ provider: LLMProviderID) -> String {
+        if provider.usesLocalCLI {
+            let tool = provider.localCLITool?.displayName ?? "CLI"
+            return "No API key needed — cleanup runs through your local \(tool) login. "
+                + "Requires \(tool) installed and signed in. \(provider.localCLITool?.loginHint ?? "")"
+        }
+        if appState.selectedLLM == provider, !appState.isSelectedLLMConfigured {
+            return "Comet will paste raw transcripts until credentials are added."
+        }
+        return "Use this provider for transcript cleanup after transcription."
     }
 
     // MARK: - Languages

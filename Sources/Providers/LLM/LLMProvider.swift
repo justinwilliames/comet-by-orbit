@@ -6,6 +6,10 @@ enum LLMProviderID: String, Codable, CaseIterable, Identifiable {
     case anthropic
     case groq
     case bedrock
+    // Local, key-free providers that shell out to a CLI the user is already
+    // signed into (like Orion). No API key stored; auth rides the CLI login.
+    case claudeCLI
+    case codexCLI
 
     var id: String { rawValue }
 
@@ -15,6 +19,8 @@ enum LLMProviderID: String, Codable, CaseIterable, Identifiable {
         case .anthropic: "Anthropic Claude"
         case .groq: "Groq"
         case .bedrock: "AWS Bedrock"
+        case .claudeCLI: "Claude Code CLI (local, no key)"
+        case .codexCLI: "Codex CLI (local, no key)"
         }
     }
 
@@ -24,6 +30,26 @@ enum LLMProviderID: String, Codable, CaseIterable, Identifiable {
         case .anthropic: [.anthropicAPIKey]
         case .groq: [.groqAPIKey]
         case .bedrock: [.awsBedrockAPIKey, .awsRegion]
+        // Key-free: authentication comes from the user's existing CLI login.
+        case .claudeCLI, .codexCLI: []
+        }
+    }
+
+    /// True for providers that run a local CLI subprocess instead of a
+    /// keyed HTTP API. Drives the "no key" settings copy and detection.
+    var usesLocalCLI: Bool {
+        switch self {
+        case .claudeCLI, .codexCLI: true
+        case .openai, .anthropic, .groq, .bedrock: false
+        }
+    }
+
+    /// The CLI tool backing a local provider, if any.
+    var localCLITool: LocalCLITool? {
+        switch self {
+        case .claudeCLI: .claude
+        case .codexCLI: .codex
+        case .openai, .anthropic, .groq, .bedrock: nil
         }
     }
 }

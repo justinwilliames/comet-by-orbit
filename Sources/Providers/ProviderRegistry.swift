@@ -61,6 +61,11 @@ final class ProviderRegistry {
                   !region.isEmpty
             else { return nil }
             return BedrockLLM(apiKey: key, region: region, httpClient: httpClient)
+        case .claudeCLI:
+            // Key-free: runs the user's local `claude` login as a subprocess.
+            return ClaudeCLILLM()
+        case .codexCLI:
+            return CodexCLILLM()
         }
     }
 
