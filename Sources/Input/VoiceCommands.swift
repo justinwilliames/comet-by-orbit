@@ -61,6 +61,7 @@ enum VoiceCommands {
         "Comet", "start dictation", "stop dictation", "new line", "select all",
         "copy", "paste", "undo", "redo", "tab", "escape", "send", "return",
         "press enter", "delete word", "delete line",
+        "interrupt", "one", "two", "three", "mode", "up", "down", "clear",
     ]
 
     /// Actions (keyword-less) that START recording, e.g. "Comet start".
@@ -82,7 +83,8 @@ enum VoiceCommands {
     }
 
     // macOS virtual key codes used below:
-    // A=0x00 Z=0x06 C=0x08 V=0x09 Return=0x24 Tab=0x30 Delete=0x33 Escape=0x35.
+    // A=0x00 Z=0x06 C=0x08 V=0x09 U=0x20 Return=0x24 Tab=0x30 Delete=0x33
+    // Escape=0x35 · 1=0x12 2=0x13 3=0x14 · Up=0x7E Down=0x7D.
 
     /// Keystroke commands recognized while ARMED + IDLE (not mid-recording).
     /// Spoken as "Comet <action>". Ordered as they appear on the reference page.
@@ -128,8 +130,8 @@ enum VoiceCommands {
             keyCode: 0x30
         ),
         VoiceCommand(
-            id: "escape", title: "Escape", keystrokeLabel: "⎋",
-            actions: ["escape", "cancel"],
+            id: "escape", title: "Escape / interrupt", keystrokeLabel: "⎋",
+            actions: ["escape", "cancel", "interrupt", "stop that"],
             keyCode: 0x35
         ),
         VoiceCommand(
@@ -141,6 +143,45 @@ enum VoiceCommands {
             id: "deleteLine", title: "Delete line", keystrokeLabel: "⌘⌫",
             actions: ["delete line"],
             keyCode: 0x33, flags: .maskCommand, isDestructive: true
+        ),
+
+        // ── Claude Code control ──────────────────────────────────────────
+        // Number keys pick a menu / permission option (1 = yes, 2 = yes-always,
+        // 3 = no). Both the word and the digit are matched ("Comet two"/"Comet 2").
+        VoiceCommand(
+            id: "one", title: "Pick option 1", keystrokeLabel: "1",
+            actions: ["one", "1", "won"],
+            keyCode: 0x12
+        ),
+        VoiceCommand(
+            id: "two", title: "Pick option 2", keystrokeLabel: "2",
+            actions: ["two", "2"],
+            keyCode: 0x13
+        ),
+        VoiceCommand(
+            id: "three", title: "Pick option 3", keystrokeLabel: "3",
+            actions: ["three", "3"],
+            keyCode: 0x14
+        ),
+        VoiceCommand(
+            id: "modeToggle", title: "Cycle mode (Shift-Tab)", keystrokeLabel: "⇧⇥",
+            actions: ["mode", "toggle mode", "switch mode", "change mode"],
+            keyCode: 0x30, flags: .maskShift
+        ),
+        VoiceCommand(
+            id: "up", title: "Arrow up", keystrokeLabel: "↑",
+            actions: ["up", "arrow up", "go up"],
+            keyCode: 0x7E
+        ),
+        VoiceCommand(
+            id: "down", title: "Arrow down", keystrokeLabel: "↓",
+            actions: ["down", "arrow down", "go down"],
+            keyCode: 0x7D
+        ),
+        VoiceCommand(
+            id: "clearLine", title: "Clear input line", keystrokeLabel: "⌃U",
+            actions: ["clear", "clear line", "clear input"],
+            keyCode: 0x20, flags: .maskControl
         ),
     ]
 
