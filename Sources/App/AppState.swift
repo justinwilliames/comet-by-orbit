@@ -426,6 +426,13 @@ final class AppState: ObservableObject {
             stopDictation()
             // Buffer tee + listener restart happen when the pipeline returns to
             // idle (see observePipeline).
+
+        case .pressReturn:
+            // Only when idle (not mid-recording). Injects Return into the
+            // focused app — e.g. to send a message that was just dictated.
+            guard pipeline.canStartRecording else { return }
+            scheduleWakeAutoDisarm() // counts as activity
+            Task { await TextInjector.pressReturn() }
         }
     }
 

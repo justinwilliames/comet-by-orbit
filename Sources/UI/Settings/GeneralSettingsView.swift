@@ -172,6 +172,12 @@ struct GeneralSettingsView: View {
                         } icon: {
                             Image(systemName: "stop.fill").foregroundStyle(.red)
                         }
+                        Label {
+                            Text("**To press Return** (e.g. send a message): say ")
+                                + Text("“Press Return”").bold() + Text(" or ") + Text("“New Line”").bold()
+                        } icon: {
+                            Image(systemName: "return").foregroundStyle(.blue)
+                        }
                         Text("“Dictation” also works in place of “Comet” (e.g. “Start Dictation”, “Stop Dictation”).")
                             .foregroundStyle(.secondary)
                     }

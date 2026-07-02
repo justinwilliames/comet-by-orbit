@@ -27,6 +27,14 @@ enum WakePhrases {
     static let start: [String] = phrases(from: startVerbs)
     /// Normalized phrases that STOP recording.
     static let stop: [String] = phrases(from: stopVerbs)
+    /// Phrases that inject a Return keypress into the focused app — recognized
+    /// while armed and idle (e.g. to send a just-pasted message). Two-word
+    /// phrases only, so a stray "send"/"return" doesn't fire a Return into
+    /// whatever's focused.
+    static let returnKey = [
+        "press return", "press enter", "hit return", "hit enter",
+        "new line", "send message", "send dictation",
+    ]
 
     private static func phrases(from verbs: [String]) -> [String] {
         verbs.flatMap { verb in nouns.map { "\(verb) \($0)" } }
@@ -45,7 +53,7 @@ enum WakePhrases {
 ///
 /// Callbacks are always delivered on the main queue.
 final class WakeWordListener {
-    enum Command { case start, end }
+    enum Command { case start, end, pressReturn }
     enum Mode { case awaitingStart, awaitingEnd }
 
     /// Delivered on the main queue when a command phrase is detected.
@@ -271,15 +279,23 @@ final class WakeWordListener {
 
         // Only inspect the tail so a phrase from a while ago can't re-match.
         let tail = words.suffix(5).joined(separator: " ")
-        let targets = mode == .awaitingStart ? WakePhrases.start : WakePhrases.stop
-        for target in targets where tail.contains(target) {
-            fire(mode == .awaitingStart ? .start : .end)
-            return
+        switch mode {
+        case .awaitingStart:
+            // Idle: either start dictation, or press Return in the focused app.
+            if Self.matches(tail, WakePhrases.start) { fire(.start) }
+            else if Self.matches(tail, WakePhrases.returnKey) { fire(.pressReturn) }
+        case .awaitingEnd:
+            // Recording: only the stop phrase is meaningful.
+            if Self.matches(tail, WakePhrases.stop) { fire(.end) }
         }
     }
 
+    private static func matches(_ tail: String, _ targets: [String]) -> Bool {
+        targets.contains { tail.contains($0) }
+    }
+
     private func fire(_ command: Command) {
-        let key = command == .start ? "start" : "end"
+        let key = String(describing: command)
         let now = Date()
         lock.lock()
         let last = lastFireTimes[key] ?? .distantPast
