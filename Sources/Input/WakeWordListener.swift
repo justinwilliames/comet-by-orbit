@@ -78,6 +78,15 @@ final class WakeWordListener {
     private var usesOwnEngine = true
     private var isActive = false
 
+    /// Bumped on every teardown. A recognition task's completion handler fires
+    /// asynchronously and can arrive AFTER we've already torn its session down;
+    /// gating restarts on a matching generation stops those stale callbacks
+    /// from relaunching — the feedback loop (teardown → endAudio → isFinal →
+    /// restart → teardown …) that pinned the recognizer at ~10 restarts/sec.
+    private var generation = 0
+    /// Restart timestamps (main-thread only) for the runaway circuit breaker.
+    private var restartTimes: [Date] = []
+
     private var lastFireTimes: [String: Date] = [:]
     private let debounceInterval: TimeInterval = 2.5
 
@@ -140,6 +149,8 @@ final class WakeWordListener {
 
     private func beginSession(mode: Mode, useOwnEngine: Bool) {
         teardown()
+        // Captured AFTER teardown bumped the counter — this is THIS session's id.
+        let myGeneration = currentGeneration()
 
         guard let recognizer = SFSpeechRecognizer(locale: Locale(identifier: localeID)) else {
             emitUnavailable("Speech recognizer unavailable for \(localeID).")
@@ -181,13 +192,23 @@ final class WakeWordListener {
 
         let task = recognizer.recognitionTask(with: request) { [weak self] result, error in
             guard let self else { return }
+            // Ignore callbacks from a session we've already superseded. This is
+            // what breaks the restart feedback loop: our own teardown() calls
+            // endAudio(), which makes the OLD task deliver a final result — and
+            // without this guard that final result would schedule yet another
+            // restart, forever.
+            guard self.currentGeneration() == myGeneration else { return }
+
             if let result {
                 self.checkForCommand(in: result.bestTranscription.formattedString)
             }
+            if let error {
+                logger.error("Wake recognition error: \(error.localizedDescription, privacy: .public)")
+            }
             // On-device continuous recognition ends itself (~1 min cap) or
-            // errors out; restart in the same mode to keep listening.
+            // errors out; restart (backed off + rate-limited) to keep listening.
             if error != nil || (result?.isFinal ?? false) {
-                DispatchQueue.main.async { self.restartIfActive() }
+                self.scheduleRestart(generation: myGeneration)
             }
         }
 
@@ -202,15 +223,41 @@ final class WakeWordListener {
         logger.info("Wake listening: mode=\(String(describing: mode), privacy: .public) ownEngine=\(useOwnEngine, privacy: .public) phrase=\(self.phrase.rawValue, privacy: .public)")
     }
 
-    private func restartIfActive() {
-        guard isActive else { return }
-        let mode = self.mode
-        let ownEngine = self.usesOwnEngine
-        beginSession(mode: mode, useOwnEngine: ownEngine)
+    private func currentGeneration() -> Int {
+        lock.lock(); defer { lock.unlock() }
+        return generation
+    }
+
+    /// Restart the session after a small backoff, but only if it's still the
+    /// current generation and we haven't been thrashing. All main-thread.
+    private func scheduleRestart(generation gen: Int) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.isActive, self.currentGeneration() == gen else { return }
+
+            // Circuit breaker: if sessions keep dying immediately (e.g. a
+            // virtual/aggregate audio device the recognizer can't hold), stop
+            // looping and report it instead of thrashing the mic.
+            let now = Date()
+            self.restartTimes.append(now)
+            self.restartTimes.removeAll { now.timeIntervalSince($0) > 10 }
+            if self.restartTimes.count > 8 {
+                logger.error("Wake recognition restarting too often — disabling to avoid a loop")
+                self.restartTimes.removeAll()
+                self.emitUnavailable("The wake word kept losing the microphone — this can happen with virtual or aggregate audio devices. Turn it off and on to retry, or use the shortcut.")
+                self.stop()
+                return
+            }
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+                guard let self, self.isActive, self.currentGeneration() == gen else { return }
+                self.beginSession(mode: self.mode, useOwnEngine: self.usesOwnEngine)
+            }
+        }
     }
 
     private func teardown() {
         lock.lock()
+        generation &+= 1 // invalidates the outgoing session's async callbacks
         let engine = audioEngine
         let task = self.task
         let request = self.request
