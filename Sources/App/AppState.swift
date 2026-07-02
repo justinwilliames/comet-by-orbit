@@ -44,7 +44,7 @@ final class AppState: ObservableObject {
 
     let pipeline: DictationPipeline
     let recorder: AudioRecorder
-    private let wakeWordListener = WakeWordListener()
+    private let commandDetector = WhisperCommandDetector()
     /// True while the current dictation session was started by the wake word —
     /// gates silence-based auto-stop so hold/toggle sessions are unaffected.
     private var wakeInitiatedSession = false
@@ -346,18 +346,29 @@ final class AppState: ObservableObject {
     // MARK: - Wake word
 
     private func setupWakeWord() {
-        wakeWordListener.localeID = STTLanguageResolver.appleLocale(for: sttLanguageSelection)
-        wakeWordListener.onCommand = { [weak self] command in
+        commandDetector.onCommand = { [weak self] command in
             self?.handleWakeCommand(command)
         }
-        wakeWordListener.onUnavailable = { [weak self] message in
+        commandDetector.onUnavailable = { [weak self] message in
             guard let self else { return }
             self.disarmWakeWord()
             self.pipeline.presentError(message)
         }
+        // Detect commands by transcribing short snippets through the user's own
+        // Whisper provider — the same accurate engine as dictation.
+        commandDetector.transcribe = { [weak self] url in
+            try await self?.transcribeCommandSnippet(url) ?? ""
+        }
         // Strip a trailing stop phrase (captured in the recording) from the
         // transcript before it's cleaned and pasted.
         pipeline.trailingStripPhrases = VoiceCommands.stopPhrases
+    }
+
+    /// Transcribes a short command snippet via the configured STT provider.
+    /// Falls back to Apple on-device only if that's what the user has selected.
+    private func transcribeCommandSnippet(_ url: URL) async throws -> String {
+        guard let provider = registry.makeSTTProvider(for: selectedSTT) else { return "" }
+        return try await provider.transcribe(fileURL: url, language: sttLanguageSelection, vocabulary: [])
     }
 
     /// Menu-bar entry point: flip the armed listening window on/off.
@@ -376,9 +387,8 @@ final class AppState: ObservableObject {
             return
         }
         wakeArmed = true
-        wakeWordListener.localeID = STTLanguageResolver.appleLocale(for: sttLanguageSelection)
         pipeline.trailingStripPhrases = VoiceCommands.stopPhrases
-        wakeWordListener.startAwaitingStart()
+        commandDetector.startIdle()
         scheduleWakeAutoDisarm()
     }
 
@@ -389,7 +399,7 @@ final class AppState: ObservableObject {
         wakeMaxDurationTask = nil
         wakeArmed = false
         recorder.onBuffer = nil
-        wakeWordListener.stop()
+        commandDetector.stop()
     }
 
     /// Called when the user turns the feature off entirely in settings.
@@ -398,7 +408,7 @@ final class AppState: ObservableObject {
         if !enabled { disarmWakeWord() }
     }
 
-    private func handleWakeCommand(_ action: WakeWordListener.WakeAction) {
+    private func handleWakeCommand(_ action: WhisperCommandDetector.WakeAction) {
         guard wakeArmed, wakeWordEnabled else { return }
 
         switch action {
@@ -408,14 +418,14 @@ final class AppState: ObservableObject {
             wakeInitiatedSession = true
             scheduleWakeAutoDisarm() // fresh activity — extend the window
 
-            // Hand the mic from the idle listener to the recorder, then tee the
-            // recorder's buffers back into the listener so it can hear "End
-            // Comet" mid-recording — one engine live at a time.
-            wakeWordListener.stop()
+            // Switch the detector from idle to stop-detection: drop its own mic
+            // engine and tee the recorder's buffers into it, so "Comet stop" is
+            // heard from the same audio the recorder captures.
+            commandDetector.stop()
             recorder.onBuffer = { [weak self] buffer in
-                self?.wakeWordListener.feed(buffer)
+                self?.commandDetector.feed(buffer)
             }
-            wakeWordListener.startAwaitingEnd()
+            commandDetector.startRecording()
 
             shortcutSessionController.beginManual(mode: .toggle)
             startDictation(triggerMode: .toggle)
@@ -603,9 +613,9 @@ final class AppState: ObservableObject {
                         self.wakeMaxDurationTask?.cancel()
                         self.wakeMaxDurationTask = nil
                         self.recorder.onBuffer = nil
-                        self.wakeWordListener.stop()
+                        self.commandDetector.stop()
                         if self.wakeArmed {
-                            self.wakeWordListener.startAwaitingStart()
+                            self.commandDetector.startIdle()
                         }
                     }
                 default:

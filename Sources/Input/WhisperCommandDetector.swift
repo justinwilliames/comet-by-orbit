@@ -1,0 +1,314 @@
+import AVFoundation
+import Foundation
+import os
+
+private let logger = Logger(subsystem: "team.yourorbit.OrbitDictation", category: "WhisperCommand")
+
+/// Detects "Comet …" voice commands by transcribing short spoken snippets
+/// through the user's own Whisper provider (Groq/OpenAI/Deepgram/…) — the same
+/// accurate engine that powers dictation — instead of Apple's on-device
+/// recognizer.
+///
+/// It runs simple energy-based voice-activity detection: it accumulates audio
+/// while you're speaking and, when you pause, sends just that snippet to the
+/// provider and matches the returned text against the command table.
+///
+/// Two modes, driven by the owner:
+///  - `.idle`: owns a mic engine; matches the start phrase + keystroke commands.
+///  - `.recording`: no engine — the dictation recorder tees its buffers in via
+///    `feed(_:)`; matches only the stop phrase, so you can end explicitly with
+///    "Comet stop" and a thinking-pause never stops you.
+final class WhisperCommandDetector {
+    enum WakeAction {
+        case start
+        case stop
+        case keystroke(VoiceCommand)
+    }
+    enum Mode { case idle, recording }
+
+    /// Delivered on the main queue when a command is recognized.
+    var onCommand: ((WakeAction) -> Void)?
+    /// Delivered on the main queue if the mic can't start.
+    var onUnavailable: ((String) -> Void)?
+    /// Transcribes a 16 kHz mono WAV via the user's provider. Set by the owner.
+    var transcribe: ((URL) async throws -> String)?
+
+    // Tuning.
+    private let speechThreshold: Float = 0.012   // RMS above this = speech
+    private let endSilenceSeconds: Double = 0.7  // pause that ends an utterance
+    private let maxUtteranceSeconds: Double = 6.0
+    private let minUtteranceSeconds: Double = 0.25
+    private let debounce: TimeInterval = 2.0
+
+    private let queue = DispatchQueue(label: "team.yourorbit.OrbitDictation.whisper-cmd", qos: .userInitiated)
+    private var audioEngine: AVAudioEngine?
+    private var mode: Mode = .idle
+    private var isActive = false
+
+    // Utterance accumulation — confined to `queue`.
+    private var utteranceFile: AVAudioFile?
+    private var utteranceURL: URL?
+    private var utteranceFormat: AVAudioFormat?
+    private var utteranceFrames: AVAudioFramePosition = 0
+    private var hadSpeech = false
+    private var trailingSilence: Double = 0
+
+    private var lastFire: [String: Date] = [:] // main-thread only
+
+    // MARK: - Control
+
+    /// Listen on our own mic for the start phrase + keystroke commands (idle).
+    func startIdle() {
+        mode = .idle
+        isActive = true
+        startOwnEngine()
+    }
+
+    /// Listen for the stop phrase from recorder-fed buffers (during recording).
+    func startRecording() {
+        stopEngine()
+        mode = .recording
+        isActive = true
+        queue.async { self.resetUtterance() }
+    }
+
+    /// Feed a captured buffer from the dictation recorder (recording mode).
+    func feed(_ buffer: AVAudioPCMBuffer) {
+        guard isActive, mode == .recording else { return }
+        ingest(buffer)
+    }
+
+    func stop() {
+        isActive = false
+        stopEngine()
+        queue.async { self.discardUtterance() }
+    }
+
+    // MARK: - Engine
+
+    private func startOwnEngine() {
+        stopEngine()
+        let engine = AVAudioEngine()
+        let input = engine.inputNode
+        let format = input.outputFormat(forBus: 0)
+        guard format.sampleRate > 0 else {
+            emitUnavailable("No audio input available for voice commands.")
+            return
+        }
+        input.installTap(onBus: 0, bufferSize: 4096, format: format) { [weak self] buffer, _ in
+            self?.ingest(buffer)
+        }
+        engine.prepare()
+        do {
+            try engine.start()
+        } catch {
+            emitUnavailable("Couldn't start the voice-command microphone: \(error.localizedDescription)")
+            return
+        }
+        audioEngine = engine
+        queue.async { self.resetUtterance() }
+        logger.info("Whisper command detector listening (idle)")
+    }
+
+    private func stopEngine() {
+        if let engine = audioEngine {
+            engine.inputNode.removeTap(onBus: 0)
+            engine.stop()
+        }
+        audioEngine = nil
+    }
+
+    // MARK: - Capture → utterance (queue-confined)
+
+    /// The tap/fed buffer is only valid during the callback, so deep-copy it
+    /// before hopping onto our serial queue.
+    private func ingest(_ buffer: AVAudioPCMBuffer) {
+        guard let copy = buffer.detectorCopy() else { return }
+        queue.async { self.handle(copy) }
+    }
+
+    private func handle(_ buffer: AVAudioPCMBuffer) {
+        guard isActive else { return }
+        let rms = Self.rms(buffer)
+        let sampleRate = buffer.format.sampleRate
+        let bufferDuration = sampleRate > 0 ? Double(buffer.frameLength) / sampleRate : 0
+
+        if rms >= speechThreshold {
+            if utteranceFile == nil { openUtterance(format: buffer.format) }
+            hadSpeech = true
+            trailingSilence = 0
+            writeUtterance(buffer)
+        } else if utteranceFile != nil {
+            // Inside an utterance — keep a little trailing silence, then end it.
+            writeUtterance(buffer)
+            trailingSilence += bufferDuration
+            if hadSpeech, trailingSilence >= endSilenceSeconds {
+                finalizeUtterance()
+                return
+            }
+        }
+
+        if let format = utteranceFormat, format.sampleRate > 0,
+           Double(utteranceFrames) / format.sampleRate >= maxUtteranceSeconds {
+            finalizeUtterance()
+        }
+    }
+
+    private func openUtterance(format: AVAudioFormat) {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString).appendingPathExtension("caf")
+        do {
+            utteranceFile = try AVAudioFile(forWriting: url, settings: format.settings)
+            utteranceURL = url
+            utteranceFormat = format
+            utteranceFrames = 0
+            hadSpeech = false
+            trailingSilence = 0
+        } catch {
+            logger.error("Failed to open utterance file: \(error.localizedDescription, privacy: .public)")
+            utteranceFile = nil
+        }
+    }
+
+    private func writeUtterance(_ buffer: AVAudioPCMBuffer) {
+        guard let file = utteranceFile else { return }
+        do {
+            try file.write(from: buffer)
+            utteranceFrames += AVAudioFramePosition(buffer.frameLength)
+        } catch {
+            logger.error("Utterance write failed: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    private func resetUtterance() {
+        utteranceFile = nil
+        utteranceURL = nil
+        utteranceFormat = nil
+        utteranceFrames = 0
+        hadSpeech = false
+        trailingSilence = 0
+    }
+
+    private func discardUtterance() {
+        if let url = utteranceURL { try? FileManager.default.removeItem(at: url) }
+        resetUtterance()
+    }
+
+    private func finalizeUtterance() {
+        guard let url = utteranceURL, let format = utteranceFormat else {
+            resetUtterance()
+            return
+        }
+        let duration = format.sampleRate > 0 ? Double(utteranceFrames) / format.sampleRate : 0
+        let hadSpeech = self.hadSpeech
+        let currentMode = mode
+        utteranceFile = nil // flush/close
+        resetUtterance()
+
+        guard hadSpeech, duration >= minUtteranceSeconds else {
+            try? FileManager.default.removeItem(at: url)
+            return
+        }
+        Task { await self.transcribeAndMatch(url: url, mode: currentMode) }
+    }
+
+    private func transcribeAndMatch(url: URL, mode: Mode) async {
+        defer { try? FileManager.default.removeItem(at: url) }
+        guard let transcribe else { return }
+
+        let wavURL: URL
+        do {
+            wavURL = try AudioNormalization.normalize(url)
+        } catch {
+            logger.error("Snippet normalize failed: \(error.localizedDescription, privacy: .public)")
+            return
+        }
+        defer { try? FileManager.default.removeItem(at: wavURL) }
+
+        let text: String
+        do {
+            text = try await transcribe(wavURL)
+        } catch {
+            logger.error("Snippet transcription failed: \(error.localizedDescription, privacy: .public)")
+            return
+        }
+        DispatchQueue.main.async { [weak self] in self?.match(text, mode: mode) }
+    }
+
+    // MARK: - Matching (main thread)
+
+    private func match(_ transcript: String, mode: Mode) {
+        guard isActive else { return }
+        let phrase = transcript.lowercased()
+            .components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+        guard !phrase.isEmpty else { return }
+
+        switch mode {
+        case .recording:
+            if Self.contains(phrase, VoiceCommands.stopPhrases) { fire(.stop, key: "stop") }
+        case .idle:
+            if Self.contains(phrase, VoiceCommands.startPhrases) {
+                fire(.start, key: "start")
+                return
+            }
+            for command in VoiceCommands.keystroke where Self.contains(phrase, command.phrases) {
+                fire(.keystroke(command), key: command.id)
+                return
+            }
+        }
+    }
+
+    private static func contains(_ phrase: String, _ targets: [String]) -> Bool {
+        targets.contains { phrase.contains($0) }
+    }
+
+    private func fire(_ action: WakeAction, key: String) {
+        let now = Date()
+        if let last = lastFire[key], now.timeIntervalSince(last) <= debounce { return }
+        lastFire[key] = now
+        logger.info("Voice command: \(key, privacy: .public)")
+        onCommand?(action)
+    }
+
+    private func emitUnavailable(_ message: String) {
+        DispatchQueue.main.async { [weak self] in self?.onUnavailable?(message) }
+    }
+
+    // MARK: - RMS
+
+    private static func rms(_ buffer: AVAudioPCMBuffer) -> Float {
+        let count = Int(buffer.frameLength)
+        guard count > 0 else { return 0 }
+        if let data = buffer.floatChannelData {
+            var sum: Float = 0
+            for i in 0 ..< count { let s = data[0][i]; sum += s * s }
+            return (sum / Float(count)).squareRoot()
+        }
+        if let data = buffer.int16ChannelData {
+            var sum: Float = 0
+            for i in 0 ..< count { let s = Float(data[0][i]) / Float(Int16.max); sum += s * s }
+            return (sum / Float(count)).squareRoot()
+        }
+        return 0
+    }
+}
+
+private extension AVAudioPCMBuffer {
+    /// Format-agnostic independent deep copy, so a tap/fed buffer can be
+    /// processed after the callback returns.
+    func detectorCopy() -> AVAudioPCMBuffer? {
+        guard frameLength > 0,
+              let copy = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameLength)
+        else { return nil }
+        copy.frameLength = frameLength
+        let source = UnsafeMutableAudioBufferListPointer(UnsafeMutablePointer(mutating: audioBufferList))
+        let destination = UnsafeMutableAudioBufferListPointer(copy.mutableAudioBufferList)
+        for index in 0 ..< min(source.count, destination.count) {
+            guard let src = source[index].mData, let dst = destination[index].mData else { continue }
+            memcpy(dst, src, Int(source[index].mDataByteSize))
+        }
+        return copy
+    }
+}

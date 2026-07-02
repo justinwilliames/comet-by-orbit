@@ -149,7 +149,7 @@ struct GeneralSettingsView: View {
     private var wakeWordCard: some View {
         PreferenceCard(
             "Wake Word",
-            detail: "Hands-free dictation — no shortcut. Runs fully on-device (audio never leaves your Mac) and only while armed from the menu bar.",
+            detail: "Hands-free dictation — no shortcut. Commands are recognized by your Whisper provider for accuracy (short snippets are sent while armed), and it only listens while armed from the menu bar.",
             icon: "waveform.badge.mic"
         ) {
             VStack(alignment: .leading, spacing: 12) {

@@ -20,7 +20,7 @@ struct VoiceCommandsSettingsView: View {
     private var introCard: some View {
         PreferenceCard(
             "Voice Commands",
-            detail: "Hands-free control while the wake word is armed. Arm it from the menu bar, then just speak. All recognition is on-device. Keystroke commands only fire while idle (not mid-dictation), and act on whatever app is focused.",
+            detail: "Hands-free control while the wake word is armed. Arm it from the menu bar, then just speak. Commands are recognized by your own Whisper provider (the same one that transcribes dictation) for accuracy. Keystroke commands only fire while idle (not mid-dictation), and act on whatever app is focused.",
             icon: "mic.and.signal.meter.fill"
         ) {
             if !appState.wakeWordEnabled {
