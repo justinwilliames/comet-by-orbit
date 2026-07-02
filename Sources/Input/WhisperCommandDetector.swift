@@ -38,7 +38,8 @@ final class WhisperCommandDetector {
     // silence — quiet mics dip below any threshold mid-phrase, which was
     // chopping commands into unrecognizable fragments. A fixed window keeps the
     // whole "Comet start dictation" together for the transcriber.
-    private let onsetThreshold: Float = 0.013   // RMS onset that starts a capture
+    // Tuned low: observed mic peaks are only ~0.010 for speech, ~0.003 silence.
+    private let onsetThreshold: Float = 0.006   // RMS onset that starts a capture
     private let captureSeconds: Double = 2.5     // fixed capture length
     private let minUtteranceSeconds: Double = 0.4
     private let debounce: TimeInterval = 2.0
