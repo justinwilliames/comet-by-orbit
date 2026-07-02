@@ -419,6 +419,10 @@ final class AppState: ObservableObject {
         wakeAutoDisarmTask = nil
         wakeMaxDurationTask?.cancel()
         wakeMaxDurationTask = nil
+        // ORDER MATTERS: clear wakeArmed BEFORE stopDictation(). The pipeline's
+        // .idle observer re-arms idle listening only while wakeArmed is true, so
+        // flipping it false first prevents stopDictation() from resurrecting the
+        // detector we're about to stop.
         wakeArmed = false
         // If a wake-started dictation is still recording, end it — otherwise
         // disarming leaves the mic open with no stop-listener and no cap.
