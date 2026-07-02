@@ -357,7 +357,7 @@ final class AppState: ObservableObject {
         }
         // Strip a trailing stop phrase (captured in the recording) from the
         // transcript before it's cleaned and pasted.
-        pipeline.trailingStripPhrases = WakePhrases.stop
+        pipeline.trailingStripPhrases = VoiceCommands.stopPhrases
     }
 
     /// Menu-bar entry point: flip the armed listening window on/off.
@@ -377,7 +377,7 @@ final class AppState: ObservableObject {
         }
         wakeArmed = true
         wakeWordListener.localeID = STTLanguageResolver.appleLocale(for: sttLanguageSelection)
-        pipeline.trailingStripPhrases = WakePhrases.stop
+        pipeline.trailingStripPhrases = VoiceCommands.stopPhrases
         wakeWordListener.startAwaitingStart()
         scheduleWakeAutoDisarm()
     }

@@ -60,7 +60,7 @@ struct VoiceCommandsSettingsView: View {
                     commandRow(
                         title: command.title,
                         keystroke: command.keystrokeLabel,
-                        phrases: command.phrases.map { "“\($0)”" }.joined(separator: "  ·  "),
+                        phrases: command.actions.map { "“Comet \($0)”" }.joined(separator: "  ·  "),
                         tint: command.isDestructive ? .orange : .primary,
                         destructive: command.isDestructive
                     )

@@ -5,34 +5,6 @@ import Speech
 
 private let logger = Logger(subsystem: "team.yourorbit.OrbitDictation", category: "WakeWord")
 
-/// The wake phrases Comet recognizes. Any accepted verb combined with any
-/// accepted noun matches, so the user never has to remember one exact wording:
-/// "Start Comet", "Hey Comet", "Start Dictation", "Hey Dictation" all start;
-/// "Stop Comet", "End Comet", "Stop Dictation", "End Dictation" all stop.
-enum WakePhrases {
-    /// User-facing description of the accepted phrasings.
-    static let startDescription = "“Start Comet” / “Hey Comet” (or “Start/Hey Dictation”)"
-    static let stopDescription = "“Stop Comet” / “End Comet” (or “Stop/End Dictation”)"
-
-    private static let startVerbs = ["start", "hey", "star"] // "star" = common mishear of "start"
-    private static let stopVerbs = ["stop", "end"]
-    /// The noun, plus how the on-device recognizer commonly mishears
-    /// "comet" / "dictation".
-    private static let nouns = [
-        "comet", "komet", "comit", "comett", "comment", "commit",
-        "dictation", "diction", "dictating",
-    ]
-
-    /// Normalized (lowercase, alphanumeric-split) phrases that START recording.
-    static let start: [String] = phrases(from: startVerbs)
-    /// Normalized phrases that STOP recording.
-    static let stop: [String] = phrases(from: stopVerbs)
-
-    private static func phrases(from verbs: [String]) -> [String] {
-        verbs.flatMap { verb in nouns.map { "\(verb) \($0)" } }
-    }
-}
-
 /// Always-on (while armed) voice-command detector built on Apple's
 /// **on-device** speech recognizer. Audio never leaves the machine.
 ///
@@ -279,7 +251,7 @@ final class WakeWordListener {
         switch mode {
         case .awaitingStart:
             // Idle: start dictation, or run one of the armed keystroke commands.
-            if Self.matches(tail, WakePhrases.start) {
+            if Self.matches(tail, VoiceCommands.startPhrases) {
                 fire(.start, key: "start")
                 return
             }
@@ -289,7 +261,7 @@ final class WakeWordListener {
             }
         case .awaitingEnd:
             // Recording: only the stop phrase is meaningful.
-            if Self.matches(tail, WakePhrases.stop) { fire(.stop, key: "stop") }
+            if Self.matches(tail, VoiceCommands.stopPhrases) { fire(.stop, key: "stop") }
         }
     }
 

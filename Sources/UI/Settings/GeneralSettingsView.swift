@@ -161,8 +161,8 @@ struct GeneralSettingsView: View {
                 if appState.wakeWordEnabled {
                     VStack(alignment: .leading, spacing: 6) {
                         Label {
-                            Text("Say ") + Text("“Start Comet”").bold() + Text(" to begin, ")
-                                + Text("“Stop Comet”").bold() + Text(" to end.")
+                            Text("Say ") + Text("“Comet start dictation”").bold() + Text(" to begin, ")
+                                + Text("“Comet stop dictation”").bold() + Text(" to end.")
                         } icon: {
                             Image(systemName: "mic.fill").foregroundStyle(.green)
                         }
