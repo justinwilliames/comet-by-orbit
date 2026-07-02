@@ -149,7 +149,7 @@ struct GeneralSettingsView: View {
     private var wakeWordCard: some View {
         PreferenceCard(
             "Wake Word",
-            detail: "Hands-free dictation — say the start phrase to begin, “Stop Comet” to stop. No shortcut. Runs fully on-device (audio never leaves your Mac) and only while armed from the menu bar.",
+            detail: "Hands-free dictation — no shortcut. Runs fully on-device (audio never leaves your Mac) and only while armed from the menu bar.",
             icon: "waveform.badge.mic"
         ) {
             VStack(alignment: .leading, spacing: 12) {
@@ -159,27 +159,25 @@ struct GeneralSettingsView: View {
                 ))
 
                 if appState.wakeWordEnabled {
-                    Picker("Wake phrase", selection: Binding(
-                        get: { appState.wakeWordPhrase },
-                        set: { appState.wakeWordPhrase = $0 }
-                    )) {
-                        ForEach(WakePhrase.allCases) { phrase in
-                            Text(phrase.displayName).tag(phrase)
+                    VStack(alignment: .leading, spacing: 6) {
+                        Label {
+                            Text("**To start:** say ") + Text("“Start Comet”").bold()
+                                + Text(" or ") + Text("“Hey Comet”").bold()
+                        } icon: {
+                            Image(systemName: "mic.fill").foregroundStyle(.green)
                         }
+                        Label {
+                            Text("**To stop:** say ") + Text("“Stop Comet”").bold()
+                                + Text(" or ") + Text("“End Comet”").bold()
+                        } icon: {
+                            Image(systemName: "stop.fill").foregroundStyle(.red)
+                        }
+                        Text("“Dictation” also works in place of “Comet” (e.g. “Start Dictation”, “Stop Dictation”).")
+                            .foregroundStyle(.secondary)
                     }
-                    .pickerStyle(.segmented)
-                    .frame(width: 240)
+                    .font(.caption)
 
-                    if appState.wakeWordPhrase.isHighFalsePositive {
-                        Label(
-                            "A single word mishears and false-triggers more often — every stray match types into whatever app is focused. \u{201C}Start Comet\u{201D} is far more reliable.",
-                            systemImage: "exclamationmark.triangle"
-                        )
-                        .font(.caption)
-                        .foregroundStyle(.orange)
-                    }
-
-                    Text("Say “\(appState.wakeWordPhrase.shortLabel)” to start, then “Stop Comet” to stop. Listening auto-disarms after 15 minutes idle (a recording also hard-stops after 3 minutes if the stop phrase is missed). While armed, macOS shows the microphone indicator.")
+                    Text("Arm it from the menu bar, then just talk. Listening auto-disarms after 15 minutes idle (a recording also hard-stops after 3 minutes if the stop phrase is missed). While armed, macOS shows the microphone indicator.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

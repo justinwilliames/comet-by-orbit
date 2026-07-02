@@ -114,8 +114,8 @@ struct MenuBarView: View {
                 } label: {
                     Label(
                         appState.wakeArmed
-                            ? "Listening for \u{201C}\(appState.wakeWordPhrase.shortLabel)\u{201D}\u{2026}"
-                            : "Listen for \u{201C}\(appState.wakeWordPhrase.shortLabel)\u{201D}",
+                            ? "Listening — say \u{201C}Start Comet\u{201D}\u{2026}"
+                            : "Listen for wake word",
                         systemImage: appState.wakeArmed ? "waveform.circle.fill" : "waveform.circle"
                     )
                     .frame(maxWidth: .infinity)

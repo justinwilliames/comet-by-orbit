@@ -5,50 +5,32 @@ import Speech
 
 private let logger = Logger(subsystem: "team.yourorbit.OrbitDictation", category: "WakeWord")
 
-/// The hands-free phrase that *starts* dictation. The *stop* phrase ("End
-/// Comet") is shared across choices.
-enum WakePhrase: String, CaseIterable, Identifiable {
-    case startComet
-    case comet
+/// The wake phrases Comet recognizes. Any accepted verb combined with any
+/// accepted noun matches, so the user never has to remember one exact wording:
+/// "Start Comet", "Hey Comet", "Start Dictation", "Hey Dictation" all start;
+/// "Stop Comet", "End Comet", "Stop Dictation", "End Dictation" all stop.
+enum WakePhrases {
+    /// User-facing description of the accepted phrasings.
+    static let startDescription = "“Start Comet” / “Hey Comet” (or “Start/Hey Dictation”)"
+    static let stopDescription = "“Stop Comet” / “End Comet” (or “Stop/End Dictation”)"
 
-    var id: String { rawValue }
-
-    var displayName: String {
-        switch self {
-        case .startComet: "“Start Comet”"
-        case .comet: "“Comet”"
-        }
-    }
-
-    var shortLabel: String {
-        switch self {
-        case .startComet: "Start Comet"
-        case .comet: "Comet"
-        }
-    }
+    private static let startVerbs = ["start", "hey", "star"] // "star" = common mishear of "start"
+    private static let stopVerbs = ["stop", "end"]
+    /// The noun, plus how the on-device recognizer commonly mishears
+    /// "comet" / "dictation".
+    private static let nouns = [
+        "comet", "komet", "comit", "comett", "comment", "commit",
+        "dictation", "diction", "dictating",
+    ]
 
     /// Normalized (lowercase, alphanumeric-split) phrases that START recording.
-    /// "Start Comet" carries a few near-mishears because the two-word phrase
-    /// keeps them safe; bare "Comet" is kept tight — every extra variant there
-    /// is another false start waiting to happen.
-    var startTargets: [String] {
-        switch self {
-        case .startComet: ["start comet", "star comet", "start komet", "start comit"]
-        case .comet: ["comet", "komet"]
-        }
-    }
+    static let start: [String] = phrases(from: startVerbs)
+    /// Normalized phrases that STOP recording.
+    static let stop: [String] = phrases(from: stopVerbs)
 
-    /// Phrases that STOP recording — shared regardless of the start phrase.
-    /// "Stop Comet" is the natural opposite of the start phrase; the variants
-    /// cover how the on-device recognizer commonly mishears it ("comment",
-    /// "commit"). "End Comet" kept as a fallback.
-    var endTargets: [String] {
-        ["stop comet", "stop comment", "stop commit", "stop komet", "end comet", "end comit"]
+    private static func phrases(from verbs: [String]) -> [String] {
+        verbs.flatMap { verb in nouns.map { "\(verb) \($0)" } }
     }
-
-    /// Bare single words mishear and false-trigger far more often. Drives the
-    /// warning shown in settings.
-    var isHighFalsePositive: Bool { self == .comet }
 }
 
 /// Always-on (while armed) voice-command detector built on Apple's
@@ -71,7 +53,6 @@ final class WakeWordListener {
     /// Delivered on the main queue if listening can't start.
     var onUnavailable: ((String) -> Void)?
 
-    var phrase: WakePhrase = .startComet
     var localeID: String = "en-US"
 
     private let lock = NSLock()
@@ -225,7 +206,7 @@ final class WakeWordListener {
         self.mode = mode
         self.usesOwnEngine = useOwnEngine
         self.isActive = true
-        logger.info("Wake listening: mode=\(String(describing: mode), privacy: .public) ownEngine=\(useOwnEngine, privacy: .public) phrase=\(self.phrase.rawValue, privacy: .public)")
+        logger.info("Wake listening: mode=\(String(describing: mode), privacy: .public) ownEngine=\(useOwnEngine, privacy: .public)")
     }
 
     private func currentGeneration() -> Int {
@@ -290,7 +271,7 @@ final class WakeWordListener {
 
         // Only inspect the tail so a phrase from a while ago can't re-match.
         let tail = words.suffix(5).joined(separator: " ")
-        let targets = mode == .awaitingStart ? phrase.startTargets : phrase.endTargets
+        let targets = mode == .awaitingStart ? WakePhrases.start : WakePhrases.stop
         for target in targets where tail.contains(target) {
             fire(mode == .awaitingStart ? .start : .end)
             return

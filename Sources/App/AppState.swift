@@ -35,15 +35,6 @@ final class AppState: ObservableObject {
     /// Hands-free wake word. Off by default — it's an always-listening feature
     /// (while armed) and users should opt in deliberately.
     @AppStorage("wakeWordEnabled") var wakeWordEnabled: Bool = false
-    @AppStorage("wakeWordPhraseRaw") private var wakeWordPhraseRaw: String = WakePhrase.startComet.rawValue
-
-    var wakeWordPhrase: WakePhrase {
-        get { WakePhrase(rawValue: wakeWordPhraseRaw) ?? .startComet }
-        set {
-            wakeWordPhraseRaw = newValue.rawValue
-            wakeWordListener.phrase = newValue
-        }
-    }
 
     @Published var holdShortcut: ShortcutBinding
     @Published var toggleShortcut: ShortcutBinding?
@@ -355,7 +346,6 @@ final class AppState: ObservableObject {
     // MARK: - Wake word
 
     private func setupWakeWord() {
-        wakeWordListener.phrase = wakeWordPhrase
         wakeWordListener.localeID = STTLanguageResolver.appleLocale(for: sttLanguageSelection)
         wakeWordListener.onCommand = { [weak self] command in
             self?.handleWakeCommand(command)
@@ -365,9 +355,9 @@ final class AppState: ObservableObject {
             self.disarmWakeWord()
             self.pipeline.presentError(message)
         }
-        // Strip a trailing "End Comet" (captured in the recording) from the
+        // Strip a trailing stop phrase (captured in the recording) from the
         // transcript before it's cleaned and pasted.
-        pipeline.trailingStripPhrases = wakeWordPhrase.endTargets
+        pipeline.trailingStripPhrases = WakePhrases.stop
     }
 
     /// Menu-bar entry point: flip the armed listening window on/off.
@@ -386,9 +376,8 @@ final class AppState: ObservableObject {
             return
         }
         wakeArmed = true
-        wakeWordListener.phrase = wakeWordPhrase
         wakeWordListener.localeID = STTLanguageResolver.appleLocale(for: sttLanguageSelection)
-        pipeline.trailingStripPhrases = wakeWordPhrase.endTargets
+        pipeline.trailingStripPhrases = WakePhrases.stop
         wakeWordListener.startAwaitingStart()
         scheduleWakeAutoDisarm()
     }
