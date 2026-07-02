@@ -149,7 +149,7 @@ struct GeneralSettingsView: View {
     private var wakeWordCard: some View {
         PreferenceCard(
             "Wake Word",
-            detail: "Hands-free dictation — say the start phrase to begin, “End Comet” to stop. No shortcut. Runs fully on-device (audio never leaves your Mac) and only while armed from the menu bar.",
+            detail: "Hands-free dictation — say the start phrase to begin, “Stop Comet” to stop. No shortcut. Runs fully on-device (audio never leaves your Mac) and only while armed from the menu bar.",
             icon: "waveform.badge.mic"
         ) {
             VStack(alignment: .leading, spacing: 12) {
@@ -179,7 +179,7 @@ struct GeneralSettingsView: View {
                         .foregroundStyle(.orange)
                     }
 
-                    Text("Say “\(appState.wakeWordPhrase.shortLabel)” to start, then “End Comet” to stop. Listening auto-disarms after 15 minutes idle (a recording also hard-stops after 3 minutes if the stop phrase is missed). While armed, macOS shows the microphone indicator.")
+                    Text("Say “\(appState.wakeWordPhrase.shortLabel)” to start, then “Stop Comet” to stop. Listening auto-disarms after 15 minutes idle (a recording also hard-stops after 3 minutes if the stop phrase is missed). While armed, macOS shows the microphone indicator.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

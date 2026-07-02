@@ -38,8 +38,13 @@ enum WakePhrase: String, CaseIterable, Identifiable {
         }
     }
 
-    /// Phrases that END recording — shared regardless of the start phrase.
-    var endTargets: [String] { ["end comet", "end komet", "end comit"] }
+    /// Phrases that STOP recording — shared regardless of the start phrase.
+    /// "Stop Comet" is the natural opposite of the start phrase; the variants
+    /// cover how the on-device recognizer commonly mishears it ("comment",
+    /// "commit"). "End Comet" kept as a fallback.
+    var endTargets: [String] {
+        ["stop comet", "stop comment", "stop commit", "stop komet", "end comet", "end comit"]
+    }
 
     /// Bare single words mishear and false-trigger far more often. Drives the
     /// warning shown in settings.
