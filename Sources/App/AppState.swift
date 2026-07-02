@@ -32,12 +32,38 @@ final class AppState: ObservableObject {
     /// which triggers macOS to surface the Login Items approval prompt.
     @AppStorage("launchAtLoginEnabled") var launchAtLoginEnabled: Bool = true
 
+    /// Hands-free wake word. Off by default — it's an always-listening feature
+    /// (while armed) and users should opt in deliberately.
+    @AppStorage("wakeWordEnabled") var wakeWordEnabled: Bool = false
+    @AppStorage("wakeWordPhraseRaw") private var wakeWordPhraseRaw: String = WakePhrase.startComet.rawValue
+
+    var wakeWordPhrase: WakePhrase {
+        get { WakePhrase(rawValue: wakeWordPhraseRaw) ?? .startComet }
+        set {
+            wakeWordPhraseRaw = newValue.rawValue
+            wakeWordListener.phrase = newValue
+        }
+    }
+
     @Published var holdShortcut: ShortcutBinding
     @Published var toggleShortcut: ShortcutBinding?
     @Published private(set) var microphoneAccessGranted = AudioRecorder.hasMicrophoneAccess
+    /// True while the wake word is actively listening (armed window).
+    @Published private(set) var wakeArmed = false
 
     let pipeline: DictationPipeline
     let recorder: AudioRecorder
+    private let wakeWordListener = WakeWordListener()
+    /// True while the current dictation session was started by the wake word —
+    /// gates silence-based auto-stop so hold/toggle sessions are unaffected.
+    private var wakeInitiatedSession = false
+    private var wakeAutoDisarmTask: Task<Void, Never>?
+    private var wakeMaxDurationTask: Task<Void, Never>?
+    /// The armed window auto-disarms after this much inactivity.
+    private static let wakeAutoDisarmInterval: TimeInterval = 15 * 60
+    /// Hard cap on a single wake-started recording if "End Comet" is missed.
+    private static let wakeMaxSessionDuration: TimeInterval = 3 * 60
+
     let hotkeyManager: HotkeyManager
     let historyStore: PipelineHistoryStore
     let providerRequestLog: ProviderRequestLog
@@ -103,6 +129,7 @@ final class AppState: ObservableObject {
         observeHotkeyManager()
         observePipeline()
         setupLearning()
+        setupWakeWord()
 
         overlayManager.bind(
             to: pipeline,
@@ -325,6 +352,117 @@ final class AppState: ObservableObject {
         }
     }
 
+    // MARK: - Wake word
+
+    private func setupWakeWord() {
+        wakeWordListener.phrase = wakeWordPhrase
+        wakeWordListener.localeID = STTLanguageResolver.appleLocale(for: sttLanguageSelection)
+        wakeWordListener.onCommand = { [weak self] command in
+            self?.handleWakeCommand(command)
+        }
+        wakeWordListener.onUnavailable = { [weak self] message in
+            guard let self else { return }
+            self.disarmWakeWord()
+            self.pipeline.presentError(message)
+        }
+        // Strip a trailing "End Comet" (captured in the recording) from the
+        // transcript before it's cleaned and pasted.
+        pipeline.trailingStripPhrases = wakeWordPhrase.endTargets
+    }
+
+    /// Menu-bar entry point: flip the armed listening window on/off.
+    func toggleWakeWord() {
+        if wakeArmed {
+            disarmWakeWord()
+        } else {
+            armWakeWord()
+        }
+    }
+
+    func armWakeWord() {
+        guard wakeWordEnabled, !wakeArmed else { return }
+        guard microphoneAccessGranted else {
+            pipeline.presentError("Microphone access is required for the wake word.")
+            return
+        }
+        wakeArmed = true
+        wakeWordListener.phrase = wakeWordPhrase
+        wakeWordListener.localeID = STTLanguageResolver.appleLocale(for: sttLanguageSelection)
+        pipeline.trailingStripPhrases = wakeWordPhrase.endTargets
+        wakeWordListener.startAwaitingStart()
+        scheduleWakeAutoDisarm()
+    }
+
+    func disarmWakeWord() {
+        wakeAutoDisarmTask?.cancel()
+        wakeAutoDisarmTask = nil
+        wakeMaxDurationTask?.cancel()
+        wakeMaxDurationTask = nil
+        wakeArmed = false
+        recorder.onBuffer = nil
+        wakeWordListener.stop()
+    }
+
+    /// Called when the user turns the feature off entirely in settings.
+    func wakeWordEnabledChanged(to enabled: Bool) {
+        wakeWordEnabled = enabled
+        if !enabled { disarmWakeWord() }
+    }
+
+    private func handleWakeCommand(_ command: WakeWordListener.Command) {
+        guard wakeArmed, wakeWordEnabled else { return }
+
+        switch command {
+        case .start:
+            // Ignore a start that lands while we're already recording/busy.
+            guard pipeline.canStartRecording else { return }
+            wakeInitiatedSession = true
+            scheduleWakeAutoDisarm() // fresh activity — extend the window
+
+            // Hand the mic from the idle listener to the recorder, then tee the
+            // recorder's buffers back into the listener so it can hear "End
+            // Comet" mid-recording — one engine live at a time.
+            wakeWordListener.stop()
+            recorder.onBuffer = { [weak self] buffer in
+                self?.wakeWordListener.feed(buffer)
+            }
+            wakeWordListener.startAwaitingEnd()
+
+            shortcutSessionController.beginManual(mode: .toggle)
+            startDictation(triggerMode: .toggle)
+            scheduleWakeMaxDuration()
+
+        case .end:
+            guard wakeInitiatedSession, pipeline.canStopRecording else { return }
+            stopDictation()
+            // Buffer tee + listener restart happen when the pipeline returns to
+            // idle (see observePipeline).
+        }
+    }
+
+    private func scheduleWakeAutoDisarm() {
+        wakeAutoDisarmTask?.cancel()
+        wakeAutoDisarmTask = Task { [weak self] in
+            let nanos = UInt64(Self.wakeAutoDisarmInterval * 1_000_000_000)
+            try? await Task.sleep(nanoseconds: nanos)
+            guard !Task.isCancelled else { return }
+            self?.disarmWakeWord()
+        }
+    }
+
+    /// Safety net: if "End Comet" is never heard, stop the runaway recording
+    /// after a hard cap so the mic doesn't stay open indefinitely.
+    private func scheduleWakeMaxDuration() {
+        wakeMaxDurationTask?.cancel()
+        wakeMaxDurationTask = Task { [weak self] in
+            let nanos = UInt64(Self.wakeMaxSessionDuration * 1_000_000_000)
+            try? await Task.sleep(nanoseconds: nanos)
+            guard !Task.isCancelled else { return }
+            guard let self, self.wakeInitiatedSession, self.pipeline.canStopRecording else { return }
+            self.stopDictation()
+        }
+    }
+
     func pasteLastTranscript() {
         guard let transcript = lastTranscriptPreview else { return }
 
@@ -460,6 +598,18 @@ final class AppState: ObservableObject {
                 case .idle, .done, .error:
                     self.shortcutSessionController.reset()
                     self.hotkeyManager.cancelWatchEnabled = false
+                    // A wake-initiated session just ended — stop teeing buffers
+                    // and hand the mic back to the idle "Start Comet" listener.
+                    if self.wakeInitiatedSession {
+                        self.wakeInitiatedSession = false
+                        self.wakeMaxDurationTask?.cancel()
+                        self.wakeMaxDurationTask = nil
+                        self.recorder.onBuffer = nil
+                        self.wakeWordListener.stop()
+                        if self.wakeArmed {
+                            self.wakeWordListener.startAwaitingStart()
+                        }
+                    }
                 default:
                     self.hotkeyManager.cancelWatchEnabled = true
                 }

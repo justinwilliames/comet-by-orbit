@@ -104,6 +104,26 @@ struct MenuBarView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+
+            if appState.wakeWordEnabled {
+                Divider()
+                    .padding(.vertical, 2)
+
+                Button {
+                    appState.toggleWakeWord()
+                } label: {
+                    Label(
+                        appState.wakeArmed
+                            ? "Listening for \u{201C}\(appState.wakeWordPhrase.shortLabel)\u{201D}\u{2026}"
+                            : "Listen for \u{201C}\(appState.wakeWordPhrase.shortLabel)\u{201D}",
+                        systemImage: appState.wakeArmed ? "waveform.circle.fill" : "waveform.circle"
+                    )
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .tint(appState.wakeArmed ? Color.orbit : nil)
+                .disabled(!appState.microphoneAccessGranted)
+            }
         }
         .padding(14)
         .background(backgroundTone.opacity(0.12), in: RoundedRectangle(cornerRadius: 16, style: .continuous))

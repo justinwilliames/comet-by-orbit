@@ -16,6 +16,11 @@ final class AudioRecorder: ObservableObject {
     /// Fires once when the first non-silent buffer arrives.
     var onRecordingReady: (() -> Void)?
 
+    /// Optional tee of every captured buffer, called on the audio thread.
+    /// Used by the wake word to listen for the "End Comet" stop phrase while
+    /// recording, without opening a second microphone engine.
+    var onBuffer: ((AVAudioPCMBuffer) -> Void)?
+
     private var audioEngine: AVAudioEngine?
     private var audioFile: AVAudioFile?
     private var tempFileURL: URL?
@@ -154,6 +159,9 @@ final class AudioRecorder: ObservableObject {
             }
         }
 
+        // The recording (the ONLY input to transcription) is written first, so
+        // nothing downstream can delay or alter it.
+        //
         // Hand the buffer off to the writer queue async so the audio tap
         // callback never stalls on disk I/O. `fileQueue` is serial and
         // flushed synchronously in `stopRecording`, so ordering is preserved
@@ -166,6 +174,14 @@ final class AudioRecorder: ObservableObject {
                 logger.error("Failed to write audio buffer: \(error.localizedDescription, privacy: .public)")
             }
         }
+
+        // Only AFTER the recording is safely queued do we tee the buffer to the
+        // wake-word listener (to hear "End Comet"). The listener deep-copies it
+        // and runs a separate on-device recognizer — it never writes to the
+        // audio file, mutates this buffer, or touches the input device, so
+        // transcription is byte-for-byte unaffected. `onBuffer` is nil for
+        // every non-wake dictation, so the normal path is completely unchanged.
+        onBuffer?(buffer)
 
         let scaledLevel = min(rms * 12, 1)
         if scaledLevel > smoothedLevel {
