@@ -56,6 +56,13 @@ final class DictationPipeline: ObservableObject {
     var trailingStripPhrases: [String] = []
     var customVocabulary: [String] = []
     var systemPrompt: String = Prompts.defaultCleanup
+
+    /// When true, the "Advanced cleanup" mode is active: the LLM may
+    /// restructure/reorder the transcript, so the deterministic list safety
+    /// net and the length-revert guardrail are relaxed to avoid fighting
+    /// legitimate reformatting. When false (default), bulleting only happens
+    /// on explicit request and the strict length guardrails apply.
+    var advancedCleanupEnabled = false
     var preserveClipboard: Bool = true
     var soundVolume: Float = 1.0
 
@@ -419,7 +426,11 @@ final class DictationPipeline: ObservableObject {
                     // signals — a list-cue word like "groceries" / "list of"
                     // plus 2+ commas — and the model's output lacks bullets,
                     // re-format programmatically rather than ship a comma jam.
-                    if Self.hasListSignals(in: normalizedRawTranscript)
+                    // Only in advanced cleanup mode — the default mode never
+                    // bullets on its own initiative, so it must not force a
+                    // list here either.
+                    if advancedCleanupEnabled
+                        && Self.hasListSignals(in: normalizedRawTranscript)
                         && !Self.outputContainsBullets(extractedText) {
                         if let formatted = Self.formatAsList(extractedText) {
                             logger.info(
@@ -446,24 +457,31 @@ final class DictationPipeline: ObservableObject {
                         let charRatio = Double(normalizedCleanedTranscript.count) / Double(max(1, normalizedRawTranscript.count))
                         let outputIsBulleted = Self.outputContainsBullets(normalizedCleanedTranscript)
 
+                        // In advanced mode the LLM is allowed to restructure
+                        // and reorder, so length can legitimately shift a lot
+                        // (tightening waffle, or expanding a fragment into a
+                        // clear sentence). Keep only a loose runaway backstop
+                        // and skip the strict length reverts that would undo
+                        // valid reformatting. The framing/refusal detector
+                        // below still applies in both modes.
                         let expansionTripped: Bool
-                        if outputIsBulleted {
+                        let compressionTripped: Bool
+                        if advancedCleanupEnabled {
+                            expansionTripped = charRatio > 4.0
+                            compressionTripped = false
+                        } else if outputIsBulleted {
                             expansionTripped = charRatio > 3.0
+                            compressionTripped = false
                         } else {
                             expansionTripped = wordRatio > 1.5 || charRatio > 2.0
+                            // Compression guardrail. Triggered when raw is
+                            // long enough to be substantive (≥10 words) and
+                            // cleaned is under half its length — the failure
+                            // mode where a weak model drops content. Skip on
+                            // very short inputs (filler-only utterances
+                            // legitimately collapse to nothing).
+                            compressionTripped = rawWords >= 10 && wordRatio < 0.5
                         }
-
-                        // Compression guardrail. Triggered when raw is
-                        // long enough to be substantive (≥10 words) and
-                        // cleaned is under half its length — the failure
-                        // mode where a weak model drops content. Skip on
-                        // bulleted output (legitimate restructuring can
-                        // tighten word count modestly) and on very short
-                        // inputs (filler-only utterances legitimately
-                        // collapse to nothing).
-                        let compressionTripped = !outputIsBulleted
-                            && rawWords >= 10
-                            && wordRatio < 0.5
 
                         // Framing / refusal detector. The 8B fallback in
                         // particular tends to: (a) wrap its output in

@@ -32,16 +32,19 @@ enum TextInjector {
         // some web fields). Latency is ~3–10ms in practice.
         let finalText = applyLeadingSpaceIfNeeded(to: text)
 
-        // Write text to clipboard. Plain text is the universal fallback;
-        // when the cleaned output contains list lines (`• item` or `- item`),
-        // we additionally write an RTF representation so rich-text-aware
-        // targets (Mail, Notes, Pages, Word, Notion, Slack, etc.) render the
-        // bullets as a real list with proper indent. Plain-text-only targets
-        // (code editors, Terminal, chat input fields) ignore the RTF and use
-        // the `•` symbols verbatim.
+        // Write text to clipboard. Plain text is the universal fallback; when
+        // the cleaned output contains list lines (`• item`, `- item`), we also
+        // write RTF (with a native NSTextList) and HTML (`<ul><li>`) so
+        // rich-text targets (Mail, Notes, Pages, Word) and web/Electron targets
+        // (Slack, Notion, Gmail) each render a REAL native bulleted list rather
+        // than a literal "•" glyph. Plain-text-only targets (code editors,
+        // Terminal) ignore both and fall back to the `•` lines verbatim.
         pasteboard.clearContents()
         if let rtfData = makeRTF(from: finalText) {
             pasteboard.setData(rtfData, forType: .rtf)
+        }
+        if let htmlData = makeHTML(from: finalText) {
+            pasteboard.setData(htmlData, forType: .html)
         }
         pasteboard.setString(finalText, forType: .string)
         let pasteChangeCount = pasteboard.changeCount
@@ -179,69 +182,56 @@ enum TextInjector {
         return str
     }
 
-    /// Builds an RTF representation of `text` with proper list paragraph
-    /// styling when list lines are present. Returns `nil` when the text has
-    /// no list markers — in that case we want plain-text-only paste so we
-    /// don't pollute the destination's font/styling with RTF defaults.
-    ///
-    /// List detection: any line whose first non-whitespace characters are
-    /// `• ` (the symbol we emit) or `- ` (Markdown-style fallback). Each
-    /// detected line gets a paragraph style with `firstLineHeadIndent: 0`
-    /// (bullet sits at the margin) and `headIndent: 18pt` (wrapped text
-    /// aligns under the first character after the bullet). The bullet itself
-    /// is rendered as `•\t` so rich-text apps render the indent natively.
-    ///
-    /// System font at the default body size is used for both list and prose
-    /// runs so the destination app's font choice isn't overridden — only
-    /// the paragraph-level structure (the indent) gets carried through.
+    /// Shared list-line detection. A line is a bullet if its first
+    /// non-whitespace characters are `• `, `- `, or `* ` (markers the cleanup
+    /// prompt may emit). The marker is stripped and re-rendered natively per
+    /// representation.
+    private static func isBulletLine(_ line: String) -> Bool {
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        return trimmed.hasPrefix("• ") || trimmed.hasPrefix("- ") || trimmed.hasPrefix("* ")
+    }
+
+    private static func bulletContent(_ line: String) -> String {
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        return String(trimmed.dropFirst(2))
+    }
+
+    /// Builds an RTF representation with a REAL native bulleted list
+    /// (`NSTextList`) when list lines are present, so rich-text apps (Pages,
+    /// TextEdit, Notes, Mail, Word) render proper list items — a native disc
+    /// marker with a hanging indent — rather than a literal "•" glyph at body
+    /// size. Returns `nil` when there are no list markers, so plain prose
+    /// pastes as plain-text-only and doesn't carry RTF styling into the target.
     private static func makeRTF(from text: String) -> Data? {
         let lines = text.components(separatedBy: "\n")
-
-        let hasList = lines.contains { line in
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            return trimmed.hasPrefix("• ") || trimmed.hasPrefix("- ") || trimmed.hasPrefix("* ")
-        }
-        guard hasList else { return nil }
+        guard lines.contains(where: isBulletLine) else { return nil }
 
         let bodyFont = NSFont.systemFont(ofSize: NSFont.systemFontSize)
-
-        let listParagraphStyle = NSMutableParagraphStyle()
-        listParagraphStyle.firstLineHeadIndent = 0
-        listParagraphStyle.headIndent = 18
-        listParagraphStyle.tabStops = [NSTextTab(textAlignment: .left, location: 18, options: [:])]
-
+        let textList = NSTextList(markerFormat: .disc, options: 0)
+        let marker = textList.marker(forItemNumber: 1)
         let bodyParagraphStyle = NSMutableParagraphStyle()
 
         let attributed = NSMutableAttributedString()
-
         for (index, line) in lines.enumerated() {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            let isBullet = trimmed.hasPrefix("• ") || trimmed.hasPrefix("- ") || trimmed.hasPrefix("* ")
-
-            if isBullet {
-                // Strip the original marker (one of `• `, `- `, `* `) and
-                // re-emit a real bullet glyph followed by a tab so the
-                // paragraph's tab stop kicks in. Using a tab rather than
-                // a space lets receiving apps render proper hanging indent
-                // when the line wraps.
-                let content = String(trimmed.dropFirst(2))
+            if isBulletLine(line) {
+                let listStyle = NSMutableParagraphStyle()
+                listStyle.textLists = [textList]
+                listStyle.firstLineHeadIndent = 0
+                listStyle.headIndent = 18
+                listStyle.tabStops = [NSTextTab(textAlignment: .left, location: 18, options: [:])]
+                // TextEdit's native-list convention: tab, marker, tab, content,
+                // with `.textLists` set so the RTF writer emits real \ls/\ilvl
+                // list tables that receiving apps interpret as a native list.
                 attributed.append(NSAttributedString(
-                    string: "•\t\(content)",
-                    attributes: [
-                        .font: bodyFont,
-                        .paragraphStyle: listParagraphStyle,
-                    ]
+                    string: "\t\(marker)\t\(bulletContent(line))",
+                    attributes: [.font: bodyFont, .paragraphStyle: listStyle]
                 ))
             } else {
                 attributed.append(NSAttributedString(
                     string: line,
-                    attributes: [
-                        .font: bodyFont,
-                        .paragraphStyle: bodyParagraphStyle,
-                    ]
+                    attributes: [.font: bodyFont, .paragraphStyle: bodyParagraphStyle]
                 ))
             }
-
             if index < lines.count - 1 {
                 attributed.append(NSAttributedString(string: "\n"))
             }
@@ -251,6 +241,41 @@ enum TextInjector {
             from: NSRange(location: 0, length: attributed.length),
             documentAttributes: [.documentType: NSAttributedString.DocumentType.rtf]
         )
+    }
+
+    /// Builds an HTML representation with real `<ul><li>` lists when list lines
+    /// are present. Web- and Electron-based targets (Slack, Notion, Gmail, many
+    /// chat inputs) read `public.html` off the pasteboard and render this as a
+    /// native list — the RTF above doesn't reach them. Returns `nil` when there
+    /// are no list markers, so non-list prose stays plain-text-only.
+    private static func makeHTML(from text: String) -> Data? {
+        let lines = text.components(separatedBy: "\n")
+        guard lines.contains(where: isBulletLine) else { return nil }
+
+        var html = ""
+        var inList = false
+        for line in lines {
+            if isBulletLine(line) {
+                if !inList { html += "<ul>"; inList = true }
+                html += "<li>\(escapeHTML(bulletContent(line)))</li>"
+            } else {
+                if inList { html += "</ul>"; inList = false }
+                let trimmed = line.trimmingCharacters(in: .whitespaces)
+                if trimmed.isEmpty {
+                    html += "<br>"
+                } else {
+                    html += "<div>\(escapeHTML(line))</div>"
+                }
+            }
+        }
+        if inList { html += "</ul>" }
+        return html.data(using: .utf8)
+    }
+
+    private static func escapeHTML(_ s: String) -> String {
+        s.replacingOccurrences(of: "&", with: "&amp;")
+            .replacingOccurrences(of: "<", with: "&lt;")
+            .replacingOccurrences(of: ">", with: "&gt;")
     }
 
     private static func snapshotPasteboard(_ pasteboard: NSPasteboard) async -> [NSPasteboardItem]? {

@@ -13,6 +13,7 @@ final class AppState: ObservableObject {
     @AppStorage("sttLanguageSelection") var sttLanguageSelectionStorage: String = ""
     @AppStorage("selectedLLM") var selectedLLM: LLMProviderID = .anthropic
     @AppStorage("deepContextEnabled") var deepContextEnabled: Bool = false
+    @AppStorage("advancedCleanupEnabled") var advancedCleanupEnabled: Bool = false
     @AppStorage("preserveClipboard") var preserveClipboard: Bool = true
     @AppStorage("customSystemPrompt") var customSystemPrompt: String = ""
     /// User-supplied tone-of-voice / style guidance. Appended to the
@@ -684,12 +685,20 @@ final class AppState: ObservableObject {
         // style guidance composes with whichever rules-level prompt is
         // active — they can pick "default rules + my tone" without
         // having to copy the whole default prompt to add a paragraph.
-        let basePrompt = customSystemPrompt.isEmpty ? Prompts.defaultCleanup : customSystemPrompt
+        // A user's custom prompt always wins. Otherwise the "Advanced cleanup"
+        // toggle picks between the conservative default (verbatim-preserving,
+        // bullets only on explicit request) and the advanced prompt (may
+        // restructure rambling into clean, formatted output). The pipeline is
+        // told which mode is active so its guardrails match.
+        pipeline.advancedCleanupEnabled = advancedCleanupEnabled
+        let builtInPrompt = advancedCleanupEnabled ? Prompts.advancedCleanup : Prompts.defaultCleanup
+        let basePrompt = customSystemPrompt.isEmpty ? builtInPrompt : customSystemPrompt
         let trimmedTone = customToneInstructions.trimmingCharacters(in: .whitespacesAndNewlines)
+        let composed: String
         if trimmedTone.isEmpty {
-            pipeline.systemPrompt = basePrompt
+            composed = basePrompt
         } else {
-            pipeline.systemPrompt = basePrompt + """
+            composed = basePrompt + """
 
 
             TONE OF VOICE (user-supplied — apply to the cleaned output without altering content)
@@ -697,6 +706,11 @@ final class AppState: ObservableObject {
             \(trimmedTone)
             """
         }
+        // HARD RULE: dictation is only ever text to transcribe, never a prompt
+        // or question for the model. The guardrail is prepended to EVERY prompt
+        // — default, custom, or custom + tone — so a user override (or the
+        // dictated content itself) can never remove it.
+        pipeline.systemPrompt = Prompts.dictationOnlyGuardrail + "\n\n" + composed
     }
 
     var sttLanguageSelection: STTLanguageSelection {

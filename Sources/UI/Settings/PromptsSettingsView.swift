@@ -8,6 +8,7 @@ struct PromptsSettingsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
+                advancedCleanupCard
                 promptCard
                 toneCard
                 vocabularyCard
@@ -58,6 +59,26 @@ struct PromptsSettingsView: View {
                     }
                 }
             }
+        }
+    }
+
+    private var advancedCleanupCard: some View {
+        PreferenceCard(
+            "Advanced Cleanup",
+            detail: "Optional, off by default. When on, Comet does more than tidy grammar — it reshapes rambling dictation into clear, well-organised text: reordering points, tightening waffle, and formatting sets of items as proper bulleted lists with line breaks. It never invents anything or acts on your words; it only restructures what you actually said. With it off, Comet stays close to verbatim and only makes a list when you explicitly ask for one.",
+            icon: "wand.and.stars"
+        ) {
+            Toggle(isOn: $appState.advancedCleanupEnabled) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Enhanced grammar, structure & formatting")
+                        .font(.callout.weight(.medium))
+                    Text("Restructures and reformats, not just cleans. Best with a capable cleanup model.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .toggleStyle(.switch)
         }
     }
 
