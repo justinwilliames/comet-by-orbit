@@ -307,16 +307,14 @@ final class HotkeyManager: ObservableObject {
     private nonisolated func handleFlagsChanged(_ event: NSEvent) -> Bool {
         let keyCode = event.keyCode
 
-        // Log every flagsChanged for debugging
-        let isKnown = trackedModifierKeyCodes.contains(keyCode)
-        logger.info("flagsChanged: keyCode=\(keyCode) known=\(isKnown) mods=\(event.modifierFlags.rawValue)")
-
-        DispatchQueue.main.async {
-            self.eventCount += 1
-            self.lastEventDescription = "flags keyCode=\(keyCode)"
-        }
-
-        guard isKnown else { return false }
+        // This runs inside the CGEvent tap callback — the most latency-sensitive
+        // path in the app (a slow callback risks macOS disabling the tap via
+        // tapDisabledByTimeout). So bail on modifiers we don't track BEFORE any
+        // logging or main-thread dispatch, and keep per-event logging at .debug
+        // (info-level persists and adds overhead on every modifier change made
+        // anywhere on the machine, not just Comet's binding).
+        guard trackedModifierKeyCodes.contains(keyCode) else { return false }
+        logger.debug("flagsChanged: keyCode=\(keyCode) mods=\(event.modifierFlags.rawValue)")
 
         // Toggle presence: if already pressed → now released, if not pressed → now pressed
         let wasReleased = stateLock.withLock { state -> Bool in
@@ -328,7 +326,12 @@ final class HotkeyManager: ObservableObject {
                 return false
             }
         }
-        logger.info("Modifier \(wasReleased ? "released" : "pressed"): keyCode=\(keyCode)")
+        logger.debug("Modifier \(wasReleased ? "released" : "pressed"): keyCode=\(keyCode)")
+
+        DispatchQueue.main.async {
+            self.eventCount += 1
+            self.lastEventDescription = "flags keyCode=\(keyCode)"
+        }
 
         evaluateBindings()
         return false

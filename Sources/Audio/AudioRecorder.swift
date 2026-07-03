@@ -107,23 +107,24 @@ final class AudioRecorder: ObservableObject {
 
         isRecording = false
 
-        // removeTap guarantees no further tap callbacks, so bufferMetrics is
-        // safe to read on the calling thread after this returns.
         audioEngine?.inputNode.removeTap(onBus: 0)
         audioEngine?.stop()
         audioEngine = nil
 
-        // Drain any pending async writes before releasing the file handle so
-        // the last buffer actually lands on disk.
-        fileQueue.sync {
+        // Drain pending async work on the serial `fileQueue`, then read the
+        // metrics and release the file handle inside the same barrier. This
+        // guarantees every buffer's write + metric append has landed AND that
+        // `bufferMetrics`/`metricTotalFrames` are read with no data race
+        // against an audio-thread callback (`removeTap` stops future callbacks
+        // but doesn't join an in-flight one — the queue barrier does).
+        let metrics: RecordingMetrics = fileQueue.sync {
             audioFile = nil
+            return RecordingMetrics(
+                sampleRate: metricSampleRate,
+                totalFrames: metricTotalFrames,
+                buffers: bufferMetrics
+            )
         }
-
-        let metrics = RecordingMetrics(
-            sampleRate: metricSampleRate,
-            totalFrames: metricTotalFrames,
-            buffers: bufferMetrics
-        )
 
         readyFired = false
         smoothedLevel = 0
@@ -147,10 +148,7 @@ final class AudioRecorder: ObservableObject {
         guard buffer.frameLength > 0 else { return }
 
         let rms = rmsLevel(for: buffer)
-
         let frameCount = Int(buffer.frameLength)
-        metricTotalFrames &+= Int64(frameCount)
-        bufferMetrics.append(BufferMetric(frameCount: frameCount, rms: rms))
 
         if !readyFired && rms > 0 {
             readyFired = true
@@ -159,19 +157,27 @@ final class AudioRecorder: ObservableObject {
             }
         }
 
-        // The recording (the ONLY input to transcription) is written first, so
-        // nothing downstream can delay or alter it.
-        //
-        // Hand the buffer off to the writer queue async so the audio tap
-        // callback never stalls on disk I/O. `fileQueue` is serial and
-        // flushed synchronously in `stopRecording`, so ordering is preserved
-        // and no write is lost.
+        // Write the buffer AND record its metrics on the serial `fileQueue`.
+        // The write goes async so the audio tap callback never stalls on disk
+        // I/O; the metric mutations (`metricTotalFrames`, `bufferMetrics`) live
+        // here too because `stopRecording` reads them — confining every
+        // mutation and the read to one serial queue removes a real data race.
+        // `bufferMetrics` is an Array whose `append` can reallocate its backing
+        // store; a concurrent main-thread read during that reallocation is heap
+        // corruption, not just a torn value. `removeTap` does NOT join an
+        // in-flight tap callback, so the queue barrier — not tap removal — is
+        // what makes the read safe. The recording is still written first, so
+        // nothing downstream can delay or alter transcription's only input.
         fileQueue.async { [weak self] in
-            guard let self, let audioFile = self.audioFile else { return }
-            do {
-                try audioFile.write(from: buffer)
-            } catch {
-                logger.error("Failed to write audio buffer: \(error.localizedDescription, privacy: .public)")
+            guard let self else { return }
+            self.metricTotalFrames &+= Int64(frameCount)
+            self.bufferMetrics.append(BufferMetric(frameCount: frameCount, rms: rms))
+            if let audioFile = self.audioFile {
+                do {
+                    try audioFile.write(from: buffer)
+                } catch {
+                    logger.error("Failed to write audio buffer: \(error.localizedDescription, privacy: .public)")
+                }
             }
         }
 

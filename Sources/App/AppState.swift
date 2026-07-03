@@ -374,10 +374,26 @@ final class AppState: ObservableObject {
         pipeline.trailingStripPhrases = VoiceCommands.stopPhrases
     }
 
+    /// Cached STT provider for wake-command transcription. Building it reads the
+    /// API key from the Keychain (a synchronous `SecItemCopyMatching` on the
+    /// main actor, since AppState is `@MainActor`), and the armed detector
+    /// transcribes a snippet as often as every ~1–3s — so rebuilding per snippet
+    /// is pure churn over a multi-hour armed session. Cache it, keyed by the
+    /// selected provider; the cache is cleared on each (re-)arm so a key changed
+    /// between sessions is always picked up fresh.
+    private var cachedCommandProvider: (id: STTProviderID, provider: any STTProvider)?
+
     /// Transcribes a short command snippet via the configured STT provider.
     /// Falls back to Apple on-device only if that's what the user has selected.
     private func transcribeCommandSnippet(_ url: URL) async throws -> String {
-        guard let provider = registry.makeSTTProvider(for: selectedSTT) else { return "" }
+        let provider: any STTProvider
+        if let cached = cachedCommandProvider, cached.id == selectedSTT {
+            provider = cached.provider
+        } else {
+            guard let fresh = registry.makeSTTProvider(for: selectedSTT) else { return "" }
+            cachedCommandProvider = (selectedSTT, fresh)
+            provider = fresh
+        }
         // Bias the recognizer toward the command vocabulary (helps accents /
         // dropped consonants like the Australian "start" → "star").
         return try await provider.transcribe(
@@ -410,6 +426,7 @@ final class AppState: ObservableObject {
         }
         wakeArmed = true
         wakeIssue = nil
+        cachedCommandProvider = nil  // rebuild against the current API key on each arm
         pipeline.trailingStripPhrases = VoiceCommands.stopPhrases
         commandDetector.startIdle()
         scheduleWakeAutoDisarm()
@@ -487,7 +504,19 @@ final class AppState: ObservableObject {
             guard pipeline.canStartRecording else { return }
             scheduleWakeAutoDisarm() // counts as activity
             let stroke = command.stroke
-            Task { await TextInjector.pressKey(stroke.keyCode, flags: stroke.flags) }
+            // Capture the app that had focus when the command was spoken. The
+            // keystroke posts after an async hop (pressKey waits for any held
+            // modifier to release), so if focus moved to a different app in
+            // between, a "Comet select all"/⌘A would land in the WRONG app.
+            // Post only if the same app is still frontmost.
+            let targetBundleID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+            Task { [weak self] in
+                guard NSWorkspace.shared.frontmostApplication?.bundleIdentifier == targetBundleID else {
+                    self?.flagWakeIssue("Skipped a voice command — the focused app changed.")
+                    return
+                }
+                await TextInjector.pressKey(stroke.keyCode, flags: stroke.flags)
+            }
         }
     }
 

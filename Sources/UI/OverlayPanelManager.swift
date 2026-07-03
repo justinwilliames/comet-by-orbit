@@ -45,15 +45,14 @@ final class OverlayPanelManager {
             createPanel(pipeline: pipeline)
         }
 
+        // The hosting view is built ONCE in `createPanel`, and its
+        // RecordingOverlay observes `pipeline` directly, so it repaints itself
+        // on every phase / audioLevel change. Do NOT re-assign `contentView`
+        // here: `show()` fires for every non-idle phase tick, and re-hosting a
+        // fresh NSHostingView each time throws away the live SwiftUI tree and
+        // restarts in-flight animations mid-transition (a visible stutter while
+        // the user is watching the overlay). Just position and front it.
         positionPanel()
-        panel?.contentView = NSHostingView(
-            rootView: RecordingOverlay(
-                pipeline: pipeline,
-                onStop: { [weak self] in self?.stopHandler?() },
-                onCancel: { [weak self] in self?.cancelHandler?() }
-            )
-            .frame(width: 430)
-        )
         panel?.orderFrontRegardless()
     }
 
