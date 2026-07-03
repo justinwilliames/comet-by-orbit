@@ -688,9 +688,15 @@ final class AppState: ObservableObject {
         // A user's custom prompt always wins. Otherwise the "Advanced cleanup"
         // toggle picks between the conservative default (verbatim-preserving,
         // bullets only on explicit request) and the advanced prompt (may
-        // restructure rambling into clean, formatted output). The pipeline is
-        // told which mode is active so its guardrails match.
-        pipeline.advancedCleanupEnabled = advancedCleanupEnabled
+        // restructure rambling into clean, formatted output).
+        //
+        // Advanced mode is only truly ACTIVE when the advanced prompt is the
+        // one in use: a non-empty custom prompt overrides it, so in that case
+        // the pipeline stays in conservative-guardrail mode (no relaxed length
+        // reverts, no force-bulletiser) to respect the custom prompt's output
+        // verbatim. This keeps the guardrail mode consistent with the prompt.
+        let advancedActive = advancedCleanupEnabled && customSystemPrompt.isEmpty
+        pipeline.advancedCleanupEnabled = advancedActive
         let builtInPrompt = advancedCleanupEnabled ? Prompts.advancedCleanup : Prompts.defaultCleanup
         let basePrompt = customSystemPrompt.isEmpty ? builtInPrompt : customSystemPrompt
         let trimmedTone = customToneInstructions.trimmingCharacters(in: .whitespacesAndNewlines)

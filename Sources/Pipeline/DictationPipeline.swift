@@ -468,7 +468,13 @@ final class DictationPipeline: ObservableObject {
                         let compressionTripped: Bool
                         if advancedCleanupEnabled {
                             expansionTripped = charRatio > 4.0
-                            compressionTripped = false
+                            // Advanced mode may legitimately tighten waffle, so
+                            // the strict compression revert is off — but keep a
+                            // LOOSE runaway backstop: a model that drops >75% of
+                            // a substantial input (≥20 words) is broken, not
+                            // tightening, so fall back to the raw transcript
+                            // rather than ship a near-empty result silently.
+                            compressionTripped = rawWords >= 20 && wordRatio < 0.25
                         } else if outputIsBulleted {
                             expansionTripped = charRatio > 3.0
                             compressionTripped = false

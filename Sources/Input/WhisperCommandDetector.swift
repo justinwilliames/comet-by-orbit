@@ -46,7 +46,7 @@ final class WhisperCommandDetector {
     private let endSilenceSeconds: Double = 0.7   // silence after speech that ends the snippet (shorter = snappier commands; the rolling context window re-joins a split "Comet… start")
     private let maxCaptureSeconds: Double = 4.0    // safety cap
     private let minUtteranceSeconds: Double = 0.4  // ignore transient blips
-    private let commandMaxSeconds: Double = 2.5    // don't upload utterances longer than this — commands are short, so longer audio is ordinary speech/dictation, never a command. Skipping it protects the shared provider quota (the top cause of 429s that drop real commands).
+    private let commandMaxSeconds: Double = 3.2    // don't upload utterances longer than this — commands are short, so longer audio is ordinary speech/dictation, never a command. Skipping it protects the shared provider quota (the top cause of 429s that drop real commands). 3.2s leaves headroom for a slowly-spoken / accented "Comet start dictation" (~2.2–2.8s) while still well under dictation-length audio.
     private let debounce: TimeInterval = 2.0        // per-command re-fire guard
     private let minUploadInterval: TimeInterval = 1.0 // rate cap: don't start uploads faster than this
     private let errorSignalInterval: TimeInterval = 20 // debounce the user-facing error signal
@@ -252,6 +252,9 @@ final class WhisperCommandDetector {
         // provider quota transcribing it. This is the biggest source of the
         // rate-limit 429s that were silently dropping real commands.
         guard duration <= commandMaxSeconds else {
+            let secs = String(format: "%.1f", duration)
+            let cap = String(format: "%.1f", commandMaxSeconds)
+            logger.debug("Command snippet dropped: \(secs, privacy: .public)s exceeds the \(cap, privacy: .public)s cap (treated as speech, not a command)")
             try? FileManager.default.removeItem(at: url)
             return
         }
