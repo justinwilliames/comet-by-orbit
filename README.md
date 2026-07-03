@@ -1,6 +1,6 @@
 # Comet
 
-Comet is a macOS menu-bar dictation app for the Orbit ecosystem. Hold a shortcut, speak, and the cleaned text drops into the app you are already using.
+Comet is a macOS menu-bar dictation app for the Orbit ecosystem. Hold a shortcut, speak, and the cleaned text drops into the app you are already using. Or go fully hands-free: arm a wake word and dictate — then run commands by voice, including a set for driving Claude Code without touching the keyboard.
 
 Forked from [Whispur](https://github.com/sophiie-ai/whispur). Comet is an Orbit-branded fork that ships with a stricter cleanup prompt and the Orbit identity, while keeping internal modules aligned with Whispur for clean upstream merges.
 
@@ -20,9 +20,11 @@ Forked from [Whispur](https://github.com/sophiie-ai/whispur). Comet is an Orbit-
 
 - Lives in the macOS menu bar instead of taking over your desktop
 - Hold-to-talk or toggle-to-latch recording
+- Hands-free voice control — arm a wake word and dictate, then run keystroke commands entirely by voice, including a command set for driving Claude Code
 - Strict cleanup prompt — the LLM is treated as a text post-processor, never as an assistant or participant
 - Rich-text list paste (real bullets and indent in Mail / Notes / Notion / Slack; plain text in code editors)
 - Multi-provider speech-to-text with local Apple dictation support
+- Cleanup via a cloud LLM or a local Claude Code / Codex CLI — no API key required for the CLI path
 - Custom vocabulary and an editable cleanup prompt
 - Sparkle-based auto-updates
 
@@ -44,6 +46,10 @@ Prefer zero cloud? Settings → Providers → **Use Apple Dictation**. Apple's o
 ### Other providers
 
 OpenAI, Anthropic, Deepgram, ElevenLabs, and AWS Bedrock are all supported under Settings → Providers → **Other providers** → expand **Advanced configuration**. Mix-and-match speech and cleanup providers independently.
+
+### Local CLI cleanup — no API key
+
+For cleanup, Comet can drive an AI CLI you already have installed instead of a cloud API. Pick **Claude Code CLI** or **Codex CLI** under Settings → Providers and Comet runs it as a subprocess using your existing CLI login — no key to paste, nothing stored. Run `claude` (or `codex`) once in Terminal to sign in first. This covers cleanup only; speech recognition still uses one of the providers above (or Apple on-device).
 
 ## First-time setup
 
@@ -85,6 +91,26 @@ Switch back to Comet. If the badge still says **Missing**, click **Recheck** on 
 
 Hold the default shortcut (**Fn** key) and speak. Release. The cleaned text pastes into whichever app currently has focus. You can change the shortcut in Settings → General → Recording Shortcuts.
 
+## Voice control (hands-free)
+
+Comet can be driven entirely by voice — no shortcut held, no keyboard touched. Spoken commands are recognized by your own speech provider (a Whisper provider like Groq gives the best accuracy; Apple on-device works too), so there's nothing extra to install.
+
+### Turn it on
+
+1. Settings → **General** → **Wake Word** → toggle **Enable wake word**.
+2. Open the menu bar icon → click **Listen for wake word** to arm it. The menu reads *Listening — say "Comet start"…* once armed.
+3. Keystroke commands inject into whichever app is focused, so keep **Accessibility** granted (the same permission dictation uses).
+
+### Commands
+
+Every command starts with the wake word **"Comet"** (say "Dictation" instead if you prefer):
+
+- **Dictation** — "Comet start dictation" to begin, "Comet stop dictation" to end. Fully hands-free, no shortcut.
+- **Keystrokes (while idle)** — "Comet send", "Comet new line", "Comet select all", "Comet copy", "Comet undo", "Comet delete line", and more.
+- **Claude Code control** — answer a permission prompt with "Comet one / two / three", "Comet interrupt" to stop it mid-response, "Comet mode" to cycle modes, "Comet up / down" to navigate, "Comet clear" to clear the input line.
+
+The full, always-current list lives in Settings → **Voice Commands**, read straight from the command table so it never drifts from what the recognizer actually matches. "Comet undo that" reverses any command that misfires.
+
 ## If something doesn't work
 
 The app has a Troubleshooting card built into Settings → Setup that handles every common case (Accessibility not picked up, Keychain prompts, post-update Gatekeeper blocks). If you'd rather work from the command line:
@@ -125,7 +151,9 @@ Hold the configured shortcut to record. On release, the audio is normalized to 1
 
 The Comet cleanup prompt is intentionally strict: the LLM is treated as a text post-processor, never as an assistant, and must never act on the content of a transcript even when the transcript reads like an instruction. The full prompt is in `Sources/Pipeline/Prompts.swift`.
 
-By default everything runs locally on Apple's on-device speech recognition, no API keys or internet connection required. Cloud STT (OpenAI, Deepgram, Groq, ElevenLabs) and cleanup LLM (Anthropic, OpenAI, Bedrock) are optional — credentials are stored in macOS Keychain when you add them.
+By default everything runs locally on Apple's on-device speech recognition, no API keys or internet connection required. Cloud STT (OpenAI, Deepgram, Groq, ElevenLabs) and cleanup (Anthropic, OpenAI, Groq, Bedrock, or a local Claude Code / Codex CLI) are optional — credentials are stored in macOS Keychain when you add them.
+
+Voice commands work the same way: while the wake word is armed, Comet captures short spoken snippets, transcribes them through the selected speech provider, and matches the result against the command table before injecting the corresponding keystroke into the frontmost app.
 
 ## Build from source
 
