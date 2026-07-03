@@ -1,7 +1,7 @@
 import XCTest
-@testable import Whispur
+@testable import Comet
 
-final class WhispurTests: XCTestCase {
+final class CometTests: XCTestCase {
 
     // MARK: - Provider IDs
 

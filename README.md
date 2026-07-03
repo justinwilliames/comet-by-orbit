@@ -180,7 +180,7 @@ Requires Xcode 16+ with the macOS 14 SDK.
 <details>
 <summary><b>What's different from Whispur</b> (for contributors)</summary>
 
-Comet is an MIT-licensed fork of [Whispur](https://github.com/sophiie-ai/whispur). Internal Swift modules and class names stay aligned with upstream so improvements can flow back and forth cleanly. The factual differences:
+Comet is an MIT-licensed fork of [Whispur](https://github.com/sophiie-ai/whispur). Behaviour-level source stays close to upstream so improvements can flow back and forth, though the Xcode target, module, and app entry point are now `Comet`-named. The factual differences:
 
 **Cleanup pipeline**
 - Strict cleanup prompt with explicit person-matching, length-cap, paragraph-break, list-trigger, and grammar-correctness rules. The default in Whispur is lighter and more conversational; ours treats the LLM as a text post-processor that must never act on the transcript content even when it reads like an instruction.
@@ -199,7 +199,7 @@ Comet is an MIT-licensed fork of [Whispur](https://github.com/sophiie-ai/whispur
 - Bundle identifier: `team.yourorbit.OrbitDictation` (Whispur is `ai.sophiie.whispur`); Application Support and Keychain service rescoped to match.
 - Distributed from `get.yourorbit.team/comet` and this repo's GitHub Releases. Currently ad-hoc signed (proper Developer ID signing pending).
 
-**Internal symbols stay Whispur-named** — `WhispurApp`, `HotkeyManager`, etc. — so `git fetch upstream` merges cleanly. Only user-visible strings, the bundle identifier, the Sparkle update channel, and the default cleanup prompt are Orbit-specific.
+**Xcode project & internal symbols are Comet-named** — `Comet.xcodeproj`, target/module `Comet`, `CometApp`, `CometTests`. The bundle identifier stays `team.yourorbit.OrbitDictation` (frozen for install continuity), and behaviour-level files still track upstream. A `git merge upstream/main` may need manual resolution on the renamed app struct and module name.
 
 </details>
 

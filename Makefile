@@ -1,5 +1,5 @@
-SCHEME = Whispur
-PROJECT = Whispur.xcodeproj
+SCHEME = Comet
+PROJECT = Comet.xcodeproj
 APP_NAME = Comet
 BUILD_DIR = build
 CONFIGURATION = Release

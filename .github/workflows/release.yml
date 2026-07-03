@@ -73,8 +73,8 @@ jobs:
       - name: Build (unsigned, Release)
         run: |
           xcodebuild build \
-            -project Whispur.xcodeproj \
-            -scheme Whispur \
+            -project Comet.xcodeproj \
+            -scheme Comet \
             -configuration Release \
             -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO \

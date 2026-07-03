@@ -23,7 +23,7 @@ CI (`.github/workflows/release.yml`):
 
 Pushing to `main` without a tag publishes a rolling `latest` prerelease.
 
-**Internal Swift symbols stay as `Whispur*` for upstream merge compatibility** (per memory rule). Don't rename them when refactoring fork-local code.
+**Internal Swift symbols and the Xcode target/module are named `Comet`** (`CometApp`, module `Comet`, `CometTests`, `Comet.xcodeproj`). This diverges from upstream `Whispur`, so a `git merge upstream/main` may conflict on the renamed `@main` app struct and the module name — resolve those in favour of the `Comet` names. Behaviour-level fork-local files (`Prompts.swift`, `DictationPipeline.swift`) still align with upstream and remain candidates to offer back.
 
 ---
 
