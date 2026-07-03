@@ -43,9 +43,10 @@ final class WhisperCommandDetector {
 
     // Tuning.
     private let onsetThreshold: Float = 0.006     // RMS that starts/sustains a capture (tuned for quiet mics)
-    private let endSilenceSeconds: Double = 1.0   // silence after speech that ends the snippet
+    private let endSilenceSeconds: Double = 0.7   // silence after speech that ends the snippet (shorter = snappier commands; the rolling context window re-joins a split "Comet… start")
     private let maxCaptureSeconds: Double = 4.0    // safety cap
     private let minUtteranceSeconds: Double = 0.4  // ignore transient blips
+    private let commandMaxSeconds: Double = 2.5    // don't upload utterances longer than this — commands are short, so longer audio is ordinary speech/dictation, never a command. Skipping it protects the shared provider quota (the top cause of 429s that drop real commands).
     private let debounce: TimeInterval = 2.0        // per-command re-fire guard
     private let minUploadInterval: TimeInterval = 1.0 // rate cap: don't start uploads faster than this
     private let errorSignalInterval: TimeInterval = 20 // debounce the user-facing error signal
@@ -246,6 +247,14 @@ final class WhisperCommandDetector {
             try? FileManager.default.removeItem(at: url)
             return
         }
+        // Commands are short. A longer utterance is ordinary speech or
+        // dictation-length audio — never a command — so don't spend the shared
+        // provider quota transcribing it. This is the biggest source of the
+        // rate-limit 429s that were silently dropping real commands.
+        guard duration <= commandMaxSeconds else {
+            try? FileManager.default.removeItem(at: url)
+            return
+        }
 
         // Rate/cost guard: at most one upload in flight, and not faster than
         // minUploadInterval. Drop excess snippets rather than storm the provider
@@ -277,13 +286,38 @@ final class WhisperCommandDetector {
         defer { try? FileManager.default.removeItem(at: wavURL) }
 
         do {
-            let text = try await transcribe(wavURL)
+            let text = try await Self.transcribeWithRateLimitRetry(wavURL, using: transcribe)
             queue.async { self.match(text, mode: mode, session: session) }
         } catch {
             // No transcript content in logs (it can be bystander speech).
             logger.error("Snippet transcription failed")
             signalTranscriptionError()
         }
+    }
+
+    /// Transcribe, retrying ONCE on a rate-limit (429). Command snippets share
+    /// the provider's per-minute quota with dictation, so a burst can 429 a
+    /// real command — which, before this, dropped it silently and forced the
+    /// user to repeat. A single short-backoff retry recovers it. Non-rate-limit
+    /// errors are not retried (a bad key or offline provider would just fail
+    /// again, and the debounced error signal already surfaces those).
+    private static func transcribeWithRateLimitRetry(
+        _ url: URL,
+        using transcribe: (URL) async throws -> String
+    ) async throws -> String {
+        do {
+            return try await transcribe(url)
+        } catch {
+            guard isRateLimited(error) else { throw error }
+            try? await Task.sleep(for: .seconds(2))
+            return try await transcribe(url)
+        }
+    }
+
+    private static func isRateLimited(_ error: Error) -> Bool {
+        if case let STTError.apiError(_, _, code) = error, code == 429 { return true }
+        let description = error.localizedDescription.lowercased()
+        return description.contains("429") || description.contains("rate limit")
     }
 
     // MARK: - Matching (queue-confined)

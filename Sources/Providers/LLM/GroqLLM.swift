@@ -59,27 +59,41 @@ struct GroqLLM: LLMProvider {
             // pipeline can decide how to degrade — typically by skipping
             // cleanup and pasting the raw transcript.
             if case .rateLimited = error {
-                logger.warning(
-                    "Groq primary model rate-limited — falling back to \(self.fallbackModelName, privacy: .public) with simplified prompt"
-                )
-                // Swap to the simplified cleanup prompt for the 8B
-                // fallback. The full ~1,400-token default prompt
-                // overwhelms small models — they pattern-match on
-                // conversation cues, refuse, frame output, or drop
-                // content. The simplified prompt (~250 tokens, three
-                // few-shot examples, structured `<output>` tags) anchors
-                // 8B on the transformation task. Sir's tone-of-voice
-                // override and any custom prompt are dropped on this
-                // path — small models can't reliably honour layered
-                // instructions, and the pipeline's compression /
-                // framing guardrails catch the obvious failures.
-                let downgradedRequest = LLMRequest(
-                    systemPrompt: Prompts.simplifiedCleanup,
-                    userMessage: request.userMessage,
-                    temperature: request.temperature,
-                    maxTokens: request.maxTokens
-                )
-                return try await fallbackInner.complete(request: downgradedRequest)
+                // Prefer quality. Groq's per-minute window rolls quickly, and
+                // the 8B fallback's output is so often mangled that the
+                // pipeline's guardrails discard it back to the raw transcript
+                // anyway. So back off briefly and retry the PRIMARY (70B) model
+                // once — a good cleaned result beats a bad one that gets thrown
+                // away. Only if the retry is ALSO rate-limited do we drop to
+                // the small fallback as a last resort.
+                logger.warning("Groq primary model rate-limited — backing off and retrying primary once before any fallback")
+                try? await Task.sleep(for: .seconds(2))
+                do {
+                    return try await primaryInner.complete(request: request)
+                } catch let retryError as LLMError {
+                    guard case .rateLimited = retryError else { throw retryError }
+                    logger.warning(
+                        "Groq primary still rate-limited after retry — falling back to \(self.fallbackModelName, privacy: .public) with simplified prompt"
+                    )
+                    // Swap to the simplified cleanup prompt for the 8B
+                    // fallback. The full ~1,400-token default prompt
+                    // overwhelms small models — they pattern-match on
+                    // conversation cues, refuse, frame output, or drop
+                    // content. The simplified prompt (~250 tokens, three
+                    // few-shot examples, structured `<output>` tags) anchors
+                    // 8B on the transformation task. The user's tone-of-voice
+                    // override and any custom prompt are dropped on this
+                    // path — small models can't reliably honour layered
+                    // instructions, and the pipeline's compression /
+                    // framing guardrails catch the obvious failures.
+                    let downgradedRequest = LLMRequest(
+                        systemPrompt: Prompts.simplifiedCleanup,
+                        userMessage: request.userMessage,
+                        temperature: request.temperature,
+                        maxTokens: request.maxTokens
+                    )
+                    return try await fallbackInner.complete(request: downgradedRequest)
+                }
             }
             throw error
         }
