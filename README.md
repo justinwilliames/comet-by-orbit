@@ -1,20 +1,18 @@
-# Comet
+<div align="center">
 
-Comet is a macOS menu-bar dictation app for the Orbit ecosystem. Hold a shortcut, speak, and the cleaned text drops into the app you are already using. Or go fully hands-free: arm a wake word and dictate — then run commands by voice, including a set for driving Claude Code without touching the keyboard.
+<img src="assets/readme/comet-header.png" alt="Comet — hold, speak, it's already typed" width="640" />
 
-Forked from [Whispur](https://github.com/sophiie-ai/whispur). Comet is an Orbit-branded fork that ships with a stricter cleanup prompt and the Orbit identity, while keeping internal modules aligned with Whispur for clean upstream merges.
+<p align="center">
+  <a href="https://github.com/justinwilliames/comet-by-orbit/releases/latest"><img src="https://img.shields.io/github/v/release/justinwilliames/comet-by-orbit?include_prereleases&label=latest&color=6366F1" alt="Latest release" /></a>
+  <img src="https://img.shields.io/badge/license-MIT-6366F1" alt="License MIT" />
+  <img src="https://img.shields.io/badge/macOS-14%2B-6366F1" alt="macOS 14+" />
+</p>
+
+</div>
+
+**Comet is a macOS menu-bar dictation app.** Hold a shortcut, speak, and the cleaned text drops into the app you are already using. Or go fully hands-free: arm a wake word and dictate — then run commands by voice, including a set for driving Claude Code without touching the keyboard.
 
 > [get.yourorbit.team/comet](https://get.yourorbit.team/comet) · Download from the Orbit Downloads page
-
-## Star History
-
-<a href="https://www.star-history.com/?repos=justinwilliames%2Fcomet-by-orbit&type=date&legend=top-left">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=justinwilliames/comet-by-orbit&type=date&theme=dark&legend=top-left" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=justinwilliames/comet-by-orbit&type=date&legend=top-left" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=justinwilliames/comet-by-orbit&type=date&legend=top-left" />
- </picture>
-</a>
 
 ## Features
 
@@ -167,7 +165,8 @@ make run
 
 Requires Xcode 16+ with the macOS 14 SDK.
 
-## What's different from Whispur
+<details>
+<summary><b>What's different from Whispur</b> (for contributors)</summary>
 
 Comet is an MIT-licensed fork of [Whispur](https://github.com/sophiie-ai/whispur). Internal Swift modules and class names stay aligned with upstream so improvements can flow back and forth cleanly. The factual differences:
 
@@ -190,7 +189,17 @@ Comet is an MIT-licensed fork of [Whispur](https://github.com/sophiie-ai/whispur
 
 **Internal symbols stay Whispur-named** — `WhispurApp`, `HotkeyManager`, etc. — so `git fetch upstream` merges cleanly. Only user-visible strings, the bundle identifier, the Sparkle update channel, and the default cleanup prompt are Orbit-specific.
 
-If you want the upstream version, install Whispur from [whispur.app](https://whispur.app).
+</details>
+
+## Star History
+
+<a href="https://www.star-history.com/?repos=justinwilliames%2Fcomet-by-orbit%2Cjustinwilliames%2Fpulsar-by-orbit%2Cjustinwilliames%2Forbit-for-claude%2Cjustinwilliames%2Forion-by-orbit&type=date&legend=top-left">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=justinwilliames/comet-by-orbit%2Cjustinwilliames/pulsar-by-orbit%2Cjustinwilliames/orbit-for-claude%2Cjustinwilliames/orion-by-orbit&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=justinwilliames/comet-by-orbit%2Cjustinwilliames/pulsar-by-orbit%2Cjustinwilliames/orbit-for-claude%2Cjustinwilliames/orion-by-orbit&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=justinwilliames/comet-by-orbit%2Cjustinwilliames/pulsar-by-orbit%2Cjustinwilliames/orbit-for-claude%2Cjustinwilliames/orion-by-orbit&type=date&legend=top-left" />
+ </picture>
+</a>
 
 ## License
 
