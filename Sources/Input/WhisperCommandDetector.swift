@@ -42,7 +42,17 @@ final class WhisperCommandDetector {
     var transcribe: ((URL) async throws -> String)?
 
     // Tuning.
-    private let onsetThreshold: Float = 0.006     // RMS that starts/sustains a capture (tuned for quiet mics)
+    // Onset detection is ADAPTIVE. A fixed threshold (was 0.006 ≈ −44 dBFS)
+    // fails whenever a room's ambient noise floor sits above it: the detector
+    // then reads silence as perpetual speech, so every capture runs to
+    // maxCaptureSeconds and is discarded for exceeding commandMaxSeconds — no
+    // command ever segments. Instead we track the ambient floor per-buffer
+    // (while idle) and ride the effective threshold above it. See updateNoiseFloor.
+    private let baseOnsetThreshold: Float = 0.006  // absolute floor — the quietest mic/room we still gate at
+    private let maxOnsetThreshold: Float = 0.05    // ceiling — a very noisy room must never go so deaf it ignores real speech
+    private let noiseMultiplier: Float = 2.5       // speech must exceed (ambient floor × this) to start a capture
+    private let noiseFloorFallRate: Float = 0.2    // how fast the floor tracks DOWN toward a quieter ambient (fast-ish)
+    private let noiseFloorRiseRate: Float = 0.05   // how fast it creeps UP toward sustained ambient (slow — a speech burst barely moves it)
     private let endSilenceSeconds: Double = 0.7   // silence after speech that ends the snippet (shorter = snappier commands; the rolling context window re-joins a split "Comet… start")
     private let maxCaptureSeconds: Double = 4.0    // safety cap
     private let minUtteranceSeconds: Double = 0.4  // ignore transient blips
@@ -70,6 +80,14 @@ final class WhisperCommandDetector {
     private var capturing = false
     private var trailingSilence: Double = 0
 
+    /// Adaptive ambient estimate + the threshold derived from it. Seeded to the
+    /// base on each idle (re-)arm, then tracked in `updateNoiseFloor` while idle.
+    /// Frozen during a capture and while in `.recording` (continuous fed speech
+    /// has no ambient to measure — it would drift the threshold up and go deaf
+    /// to the stop phrase).
+    private var noiseFloor: Float = 0.006
+    private var effectiveOnsetThreshold: Float = 0.006
+
     private var transcribing = false          // single in-flight upload (rate/cost guard)
     private var lastUploadAt = Date.distantPast
     private var lastErrorSignalAt = Date.distantPast
@@ -87,6 +105,10 @@ final class WhisperCommandDetector {
             self.mode = .idle
             self.session &+= 1
             self.resetUtterance()
+            // Re-seed the adaptive floor so a stale estimate from a prior session
+            // doesn't linger; it re-converges to the room within ~1s of ambient.
+            self.noiseFloor = self.baseOnsetThreshold
+            self.effectiveOnsetThreshold = self.baseOnsetThreshold
         }
         startOwnEngine()
     }
@@ -166,7 +188,7 @@ final class WhisperCommandDetector {
 
         if capturing {
             writeUtterance(buffer)
-            if rms >= onsetThreshold {
+            if rms >= effectiveOnsetThreshold {
                 trailingSilence = 0
             } else {
                 trailingSilence += bufferDuration
@@ -178,14 +200,33 @@ final class WhisperCommandDetector {
             if sampleRate > 0, Double(utteranceFrames) / sampleRate >= maxCaptureSeconds {
                 finalizeUtterance()
             }
-        } else if rms >= onsetThreshold {
-            openUtterance(format: buffer.format)
-            if utteranceFile != nil {
-                capturing = true
-                trailingSilence = 0
-                writeUtterance(buffer)
+        } else {
+            // Not capturing. While idle, adapt the ambient floor so the onset
+            // threshold rides just above the room — this is what stops silence
+            // reading as speech. In `.recording` the floor is frozen (fed audio
+            // is continuous dictation, not ambient).
+            if mode == .idle { updateNoiseFloor(rms) }
+            if rms >= effectiveOnsetThreshold {
+                openUtterance(format: buffer.format)
+                if utteranceFile != nil {
+                    capturing = true
+                    trailingSilence = 0
+                    logger.debug("Capture opened: rms \(rms, privacy: .public) ≥ threshold \(self.effectiveOnsetThreshold, privacy: .public) (noise floor \(self.noiseFloor, privacy: .public))")
+                    writeUtterance(buffer)
+                }
             }
         }
+    }
+
+    /// Adapt the ambient noise-floor estimate from a not-capturing idle buffer
+    /// and recompute the effective onset threshold. Tracks DOWN faster than UP,
+    /// so a momentary quiet buffer doesn't collapse the floor and a burst of
+    /// speech doesn't inflate it — the estimate settles on genuine room ambient.
+    private func updateNoiseFloor(_ rms: Float) {
+        let rate = rms < noiseFloor ? noiseFloorFallRate : noiseFloorRiseRate
+        noiseFloor += (rms - noiseFloor) * rate
+        let scaled = noiseFloor * noiseMultiplier
+        effectiveOnsetThreshold = min(max(scaled, baseOnsetThreshold), maxOnsetThreshold)
     }
 
     private func openUtterance(format: AVAudioFormat) {
